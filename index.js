@@ -23,6 +23,7 @@ app.use('/api/user', require('./routes/user'));
 app.use('/api/problems', require('./routes/problems'));
 app.use('/api/progress', require('./routes/progress'));
 app.use('/api/settings', require('./routes/settings'));
+app.use('/api/interview', require('./routes/interview'));
 
 
 mongoose.connect(process.env.MONGODB_URI)
