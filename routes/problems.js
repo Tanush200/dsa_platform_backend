@@ -3,19 +3,23 @@ const router = express.Router();
 const Problem = require('../models/Problem');
 const { auth, admin } = require('../middleware/auth');
 
+// Get all problems sorted by order
 router.get('/', auth, async (req, res) => {
   try {
-    const problems = await Problem.find().sort({ createdAt: -1 });
+    const problems = await Problem.find().sort({ order: 1, createdAt: 1 });
     res.json(problems);
   } catch (error) {
     res.status(500).json({ error: error.message });
   }
 });
 
+// Add single problem
 router.post('/', [auth, admin], async (req, res) => {
   try {
     const { title, topic, pattern, difficulty, leetcodeLink } = req.body;
-    const newProblem = new Problem({ title, topic, pattern, difficulty, leetcodeLink });
+    // Place new problems at the end
+    const maxOrder = await Problem.countDocuments();
+    const newProblem = new Problem({ title, topic, pattern, difficulty, leetcodeLink, order: maxOrder });
     await newProblem.save();
     res.status(201).json(newProblem);
   } catch (error) {
@@ -23,15 +27,38 @@ router.post('/', [auth, admin], async (req, res) => {
   }
 });
 
+// Bulk reorder – receives array of { _id, order }
+router.post('/reorder', [auth, admin], async (req, res) => {
+  try {
+    const updates = req.body; // [{ _id, order }, ...]
+    const ops = updates.map(({ _id, order }) => ({
+      updateOne: {
+        filter: { _id },
+        update: { $set: { order } }
+      }
+    }));
+    await Problem.bulkWrite(ops);
+    res.json({ message: 'Order updated' });
+  } catch (error) {
+    res.status(500).json({ error: error.message });
+  }
+});
+
+// Update problem fields
 router.put('/:id', [auth, admin], async (req, res) => {
   try {
-    const updatedProblem = await Problem.findByIdAndUpdate(req.params.id, req.body, { new: true });
+    const updatedProblem = await Problem.findByIdAndUpdate(
+      req.params.id,
+      req.body,
+      { new: true, returnDocument: 'after' }
+    );
     res.json(updatedProblem);
   } catch (error) {
     res.status(500).json({ error: error.message });
   }
 });
 
+// Delete problem
 router.delete('/:id', [auth, admin], async (req, res) => {
   try {
     await Problem.findByIdAndDelete(req.params.id);

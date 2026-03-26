@@ -19,6 +19,10 @@ const ProblemSchema = new mongoose.Schema({
   },
   leetcodeLink: {
     type: String
+  },
+  order: {
+    type: Number,
+    default: 0
   }
 }, { timestamps: true });
 

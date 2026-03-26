@@ -22,6 +22,7 @@ app.use('/api/auth', require('./routes/auth'));
 app.use('/api/user', require('./routes/user'));
 app.use('/api/problems', require('./routes/problems'));
 app.use('/api/progress', require('./routes/progress'));
+app.use('/api/settings', require('./routes/settings'));
 
 
 mongoose.connect(process.env.MONGODB_URI)
