@@ -3,7 +3,6 @@ const router = express.Router();
 const Problem = require('../models/Problem');
 const { auth, admin } = require('../middleware/auth');
 
-// Get all problems sorted by order
 router.get('/', auth, async (req, res) => {
   try {
     const problems = await Problem.find().sort({ order: 1, createdAt: 1 });
@@ -13,11 +12,11 @@ router.get('/', auth, async (req, res) => {
   }
 });
 
-// Add single problem
+
 router.post('/', [auth, admin], async (req, res) => {
   try {
     const { title, topic, pattern, difficulty, leetcodeLink } = req.body;
-    // Place new problems at the end
+
     const maxOrder = await Problem.countDocuments();
     const newProblem = new Problem({ title, topic, pattern, difficulty, leetcodeLink, order: maxOrder });
     await newProblem.save();
@@ -27,7 +26,7 @@ router.post('/', [auth, admin], async (req, res) => {
   }
 });
 
-// Bulk reorder – receives array of { _id, order }
+
 router.post('/reorder', [auth, admin], async (req, res) => {
   try {
     const updates = req.body; // [{ _id, order }, ...]
@@ -44,7 +43,7 @@ router.post('/reorder', [auth, admin], async (req, res) => {
   }
 });
 
-// Update problem fields
+
 router.put('/:id', [auth, admin], async (req, res) => {
   try {
     const updatedProblem = await Problem.findByIdAndUpdate(
@@ -58,7 +57,7 @@ router.put('/:id', [auth, admin], async (req, res) => {
   }
 });
 
-// Delete problem
+
 router.delete('/:id', [auth, admin], async (req, res) => {
   try {
     await Problem.findByIdAndDelete(req.params.id);

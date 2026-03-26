@@ -3,7 +3,7 @@ const router = express.Router();
 const Settings = require('../models/Settings');
 const { auth, admin } = require('../middleware/auth');
 
-// GET pattern order
+
 router.get('/pattern-order', auth, async (req, res) => {
   try {
     const setting = await Settings.findOne({ key: 'patternOrder' });
@@ -13,7 +13,7 @@ router.get('/pattern-order', auth, async (req, res) => {
   }
 });
 
-// PUT pattern order (admin only)
+
 router.put('/pattern-order', [auth, admin], async (req, res) => {
   try {
     const { order } = req.body;
