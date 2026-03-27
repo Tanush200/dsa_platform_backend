@@ -18,6 +18,11 @@ app.use(
 );
 app.use(express.json());
 
+// Health check for AWS load balancers
+app.get('/health', (req, res) => {
+  res.status(200).json({ status: 'ok', timestamp: new Date().toISOString() });
+});
+
 app.use('/api/auth', require('./routes/auth'));
 app.use('/api/user', require('./routes/user'));
 app.use('/api/problems', require('./routes/problems'));
