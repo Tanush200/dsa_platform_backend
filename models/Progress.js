@@ -18,6 +18,14 @@ const ProgressSchema = new mongoose.Schema({
   },
   notes: {
     type: String
+  },
+  difficultyRating: {
+    type: String,
+    enum: ['Easy', 'Medium', 'Hard', 'None', ''],
+    default: ''
+  },
+  nextReviewDate: {
+    type: Date
   }
 }, { timestamps: true });
 

@@ -14,19 +14,40 @@ router.get('/', auth, async (req, res) => {
 
 router.post('/', auth, async (req, res) => {
   try {
-    const { problemId, status, notes } = req.body;
+    const { problemId, status, notes, difficultyRating } = req.body;
 
     let progress = await Progress.findOne({ userId: req.user.id, problemId });
+    let incomingStatus = status || (progress ? progress.status : 'Todo');
+    let nextReviewDate = progress ? progress.nextReviewDate : null;
+
+    if (incomingStatus === 'Solved') {
+      const now = new Date();
+      if (difficultyRating === 'Easy') nextReviewDate = new Date(new Date().setDate(now.getDate() + 21));
+      else if (difficultyRating === 'Medium') nextReviewDate = new Date(new Date().setDate(now.getDate() + 7));
+      else if (difficultyRating === 'Hard') nextReviewDate = new Date(new Date().setDate(now.getDate() + 3));
+      else if (difficultyRating === 'None') nextReviewDate = null; // No Review Needed — clear any existing schedule
+      // if no rating given at all, preserve existing nextReviewDate
+    } else if (incomingStatus === 'Review') {
+      const now = new Date();
+      nextReviewDate = new Date(new Date().setDate(now.getDate() + 1));
+    } else if (incomingStatus === 'Todo') {
+      nextReviewDate = null;
+    }
+
     if (progress) {
       if (status) progress.status = status;
       if (notes !== undefined) progress.notes = notes;
+      if (difficultyRating !== undefined) progress.difficultyRating = difficultyRating;
+      progress.nextReviewDate = nextReviewDate;
       await progress.save();
     } else {
       progress = new Progress({
         userId: req.user.id,
         problemId,
-        status: status || 'Todo',
-        notes: notes || ''
+        status: incomingStatus,
+        notes: notes || '',
+        difficultyRating: difficultyRating || '',
+        nextReviewDate
       });
       await progress.save();
     }
