@@ -1,7 +1,7 @@
 const jwt = require('jsonwebtoken');
 
 function auth(req, res, next) {
-  const token = req.header('Authorization')?.split(' ')[1]; // Bearer <token>
+  const token = req.header('Authorization')?.split(' ')[1];
   if (!token) return res.status(401).json({ message: 'Access denied. No token provided.' });
 
   try {
@@ -13,11 +13,19 @@ function auth(req, res, next) {
   }
 }
 
-function admin(req, res, next) {
-  if (req.user.role !== 'admin') {
-    return res.status(403).json({ message: 'Access denied. Admin only.' });
+const User = require('../models/User');
+
+async function admin(req, res, next) {
+  try {
+    const realUser = await User.findById(req.user.id);
+
+    if (!realUser || realUser.role !== 'admin') {
+      return res.status(403).json({ message: 'Access denied. You are not a real administrator.' });
+    }
+    next();
+  } catch (error) {
+    res.status(500).json({ message: 'Server error verifying admin status.' });
   }
-  next();
 }
 
 module.exports = { auth, admin };
