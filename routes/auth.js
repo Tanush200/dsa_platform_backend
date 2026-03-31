@@ -21,7 +21,15 @@ router.post('/register', async (req, res) => {
     await user.save();
 
     const token = jwt.sign({ id: user._id, role: user.role }, process.env.JWT_SECRET || 'superDsaSecretKey2026!', { expiresIn: '1d' });
-    res.json({ token, user: { id: user._id, username, role: user.role } });
+
+    res.cookie('token', token, {
+      httpOnly: true,
+      secure: process.env.NODE_ENV === 'production',
+      sameSite: process.env.NODE_ENV === 'production' ? 'none' : 'lax',
+      maxAge: 24 * 60 * 60 * 1000 // 1 day
+    });
+
+    res.json({ user: { id: user._id, username, role: user.role } });
   } catch (error) {
     res.status(500).json({ error: error.message });
   }
@@ -37,10 +45,28 @@ router.post('/login', async (req, res) => {
     if (!validPassword) return res.status(400).json({ message: 'Invalid username or password' });
 
     const token = jwt.sign({ id: user._id, role: user.role }, process.env.JWT_SECRET || 'superDsaSecretKey2026!', { expiresIn: '1d' });
-    res.json({ token, user: { id: user._id, username, role: user.role } });
+
+    res.cookie('token', token, {
+      httpOnly: true,
+      secure: process.env.NODE_ENV === 'production',
+      sameSite: process.env.NODE_ENV === 'production' ? 'none' : 'lax',
+      maxAge: 24 * 60 * 60 * 1000 // 1 day
+    });
+
+    res.json({ user: { id: user._id, username, role: user.role } });
   } catch (error) {
     res.status(500).json({ error: error.message });
   }
+});
+
+router.post('/logout', (req, res) => {
+  res.cookie('token', '', {
+    httpOnly: true,
+    secure: process.env.NODE_ENV === 'production',
+    sameSite: process.env.NODE_ENV === 'production' ? 'none' : 'lax',
+    expires: new Date(0)
+  });
+  res.json({ message: 'Logged out successfully' });
 });
 
 module.exports = router;
