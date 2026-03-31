@@ -29,7 +29,7 @@ router.post('/', [auth, admin], async (req, res) => {
 
 router.post('/reorder', [auth, admin], async (req, res) => {
   try {
-    const updates = req.body; // [{ _id, order }, ...]
+    const updates = req.body;
     const ops = updates.map(({ _id, order }) => ({
       updateOne: {
         filter: { _id },

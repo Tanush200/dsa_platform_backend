@@ -6,7 +6,7 @@ const jwt = require('jsonwebtoken');
 
 router.post('/register', async (req, res) => {
   try {
-    const { username, password, role } = req.body;
+    const { username, password } = req.body;
     let user = await User.findOne({ username });
     if (user) return res.status(400).json({ message: 'User already exists' });
 
@@ -16,7 +16,7 @@ router.post('/register', async (req, res) => {
     user = new User({
       username,
       password: hashedPassword,
-      role: role === 'admin' ? 'admin' : 'student' // Optional: remove passing role from client in production
+      role: 'student'
     });
     await user.save();
 
