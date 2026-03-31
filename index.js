@@ -31,7 +31,7 @@ app.use(express.json());
 app.get('/api/health', (req, res) => {
   res.status(200).json({
     status: 'success',
-    message: 'DSA Platform Backend is running successfully',
+    message: 'Elite Syntax Backend is running successfully',
     timestamp: new Date().toISOString()
   });
 });
