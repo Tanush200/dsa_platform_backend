@@ -18,6 +18,14 @@ app.use(
 );
 app.use(express.json());
 
+app.get('/api/health', (req, res) => {
+  res.status(200).json({
+    status: 'success',
+    message: 'DSA Platform Backend is running successfully',
+    timestamp: new Date().toISOString()
+  });
+});
+
 app.use('/api/auth', require('./routes/auth'));
 app.use('/api/user', require('./routes/user'));
 app.use('/api/problems', require('./routes/problems'));
