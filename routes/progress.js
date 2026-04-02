@@ -2,6 +2,7 @@ const express = require('express');
 const router = express.Router();
 const Progress = require('../models/Progress');
 const { auth } = require('../middleware/auth');
+const User = require('../models/User');
 
 router.get('/', auth, async (req, res) => {
   try {
@@ -25,8 +26,58 @@ router.post('/', auth, async (req, res) => {
       if (difficultyRating === 'Easy') nextReviewDate = new Date(new Date().setDate(now.getDate() + 21));
       else if (difficultyRating === 'Medium') nextReviewDate = new Date(new Date().setDate(now.getDate() + 7));
       else if (difficultyRating === 'Hard') nextReviewDate = new Date(new Date().setDate(now.getDate() + 3));
-      else if (difficultyRating === 'None') nextReviewDate = null; // No Review Needed — clear any existing schedule
-      // if no rating given at all, preserve existing nextReviewDate
+      else if (difficultyRating === 'None') nextReviewDate = null;
+
+      const isNewSolve = !progress || progress.status !== 'Solved';
+
+      if (isNewSolve) {
+        const user = await User.findById(req.user.id);
+
+        const today = new Date();
+
+        const year = today.getFullYear();
+        const month = String(today.getMonth() + 1).padStart(2, '0');
+        const dayStr = String(today.getDate()).padStart(2, '0');
+        const dateString = `${year}-${month}-${dayStr}`;
+
+        today.setHours(0, 0, 0, 0);
+
+        if (user.lastSolvedDate) {
+          const lastSolved = new Date(user.lastSolvedDate);
+          lastSolved.setHours(0, 0, 0, 0);
+
+          const diffTime = Math.abs(today - lastSolved);
+
+          const diffDays = Math.round(diffTime / (1000 * 60 * 60 * 24));
+
+          if (diffDays === 1) {
+            user.currentStreak += 1;
+            user.lastSolvedDate = today;
+
+          } else if (diffDays > 1) {
+            user.currentStreak = 1;
+            user.lastSolvedDate = today;
+          }
+        } else {
+          user.currentStreak = 1;
+          user.lastSolvedDate = today;
+        }
+
+        if (user.currentStreak > (user.maxStreak || 0)) {
+          user.maxStreak = user.currentStreak;
+        }
+
+        const existingDay = user.solveHistory.find(d => d.date === dateString);
+        if (existingDay) {
+          existingDay.count += 1;
+        } else {
+          user.solveHistory.push({ date: dateString, count: 1 });
+        }
+
+        await user.save();
+      }
+
+
     } else if (incomingStatus === 'Review') {
       const now = new Date();
       nextReviewDate = new Date(new Date().setDate(now.getDate() + 1));
