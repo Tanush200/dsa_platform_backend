@@ -1,0 +1,53 @@
+const mongoose = require('mongoose');
+
+const TestCaseSchema = new mongoose.Schema({
+    input: {
+        type: String,
+        required: true
+    },
+    expectedOutput: {
+        type: String,
+        required: true
+    },
+    isHidden: {
+        type: Boolean,
+        default: false
+    }
+});
+
+const DuelProblemSchema = new mongoose.Schema({
+    title: {
+        type: String,
+        required: true
+    },
+    description: {
+        type: String,
+        required: true
+    },
+    difficulty: {
+        type: String,
+        enum: ['Easy', 'Medium', 'Hard'],
+        default: 'Medium'
+    },
+
+    tags: [String],
+    supportedModes: [{
+        type: String,
+        enum: ['speed', 'optimization', 'bugfix', 'reverse']
+    }],
+
+    buggyCode: {
+        cpp: { type: String },
+        java: { type: String },
+        javascript: { type: String },
+        python: { type: String }
+    },
+
+    reverseOutput: {
+        type: String
+    },
+    testCases: [TestCaseSchema],
+    active: { type: Boolean, default: true }
+}, { timestamps: true });
+
+module.exports = mongoose.model('DuelProblem', DuelProblemSchema);

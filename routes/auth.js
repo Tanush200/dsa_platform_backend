@@ -20,7 +20,7 @@ router.post('/register', async (req, res) => {
     });
     await user.save();
 
-    const token = jwt.sign({ id: user._id, role: user.role }, process.env.JWT_SECRET || 'superDsaSecretKey2026!', { expiresIn: '1d' });
+    const token = jwt.sign({ id: user._id, role: user.role, username: user.username }, process.env.JWT_SECRET || 'superDsaSecretKey2026!', { expiresIn: '1d' });
 
     res.cookie('token', token, {
       httpOnly: true,
@@ -44,7 +44,7 @@ router.post('/login', async (req, res) => {
     const validPassword = await bcrypt.compare(password, user.password);
     if (!validPassword) return res.status(400).json({ message: 'Invalid username or password' });
 
-    const token = jwt.sign({ id: user._id, role: user.role }, process.env.JWT_SECRET || 'superDsaSecretKey2026!', { expiresIn: '1d' });
+    const token = jwt.sign({ id: user._id, role: user.role, username: user.username }, process.env.JWT_SECRET || 'superDsaSecretKey2026!', { expiresIn: '1d' });
 
     res.cookie('token', token, {
       httpOnly: true,
@@ -67,6 +67,16 @@ router.post('/logout', (req, res) => {
     expires: new Date(0)
   });
   res.json({ message: 'Logged out successfully' });
+});
+
+// GET /api/auth/socket-token
+// Returns the JWT from the HttpOnly cookie as plain JSON so Socket.io can use it.
+// Socket.io cannot read HttpOnly cookies directly, so this bridge is needed.
+const { auth } = require('../middleware/auth');
+router.get('/socket-token', auth, (req, res) => {
+  const token = req.cookies?.token;
+  if (!token) return res.status(401).json({ message: 'No token found' });
+  res.json({ token });
 });
 
 module.exports = router;
