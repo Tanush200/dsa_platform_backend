@@ -7,7 +7,8 @@ const ProblemSchema = new mongoose.Schema({
   },
   topic: {
     type: String,
-    required: true
+    required: true,
+    index: true
   },
   pattern: {
     type: String
@@ -15,7 +16,8 @@ const ProblemSchema = new mongoose.Schema({
   difficulty: {
     type: String,
     enum: ['Easy', 'Medium', 'Hard'],
-    required: true
+    required: true,
+    index: true
   },
   leetcodeLink: {
     type: String

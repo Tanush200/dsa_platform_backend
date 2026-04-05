@@ -5,7 +5,7 @@ const { auth, admin } = require('../middleware/auth');
 
 router.get('/', auth, async (req, res) => {
   try {
-    const problems = await Problem.find().sort({ order: 1, createdAt: 1 });
+    const problems = await Problem.find().sort({ order: 1, createdAt: 1 }).lean();
     res.json(problems);
   } catch (error) {
     res.status(500).json({ error: error.message });

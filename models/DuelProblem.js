@@ -27,7 +27,8 @@ const DuelProblemSchema = new mongoose.Schema({
     difficulty: {
         type: String,
         enum: ['Easy', 'Medium', 'Hard'],
-        default: 'Medium'
+        default: 'Medium',
+        index: true
     },
 
     tags: [String],
@@ -47,7 +48,7 @@ const DuelProblemSchema = new mongoose.Schema({
         type: String
     },
     testCases: [TestCaseSchema],
-    active: { type: Boolean, default: true }
+    active: { type: Boolean, default: true, index: true }
 }, { timestamps: true });
 
 module.exports = mongoose.model('DuelProblem', DuelProblemSchema);

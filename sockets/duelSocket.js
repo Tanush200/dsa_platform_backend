@@ -22,19 +22,57 @@ function getRankFromElo(elo) {
     return 'Bronze';
 }
 
-async function getRandomProblem(mode) {
-    // const problems = await DuelProblem.find({
-    //     active: true,
-    //     supportedModes: mode
-    // });
-
-    const problems = await DuelProblem.aggregate([
-        { $match: { active: true, supportedModes: mode } },
-        { $sample: { size: 1 } }
-    ])
-    if (!problems.length) throw new Error('No problems available for this mode');
-    return problems[0];
+let problemCache = {
+    speed: [],
+    optimization: [],
+    bugfix: [],
+    reverse: [],
+    lastUpdated: 0
 }
+
+async function refreshCache() {
+    try {
+        const problems = await DuelProblem.find({ active: true }, '_id supportedModes').lean();
+
+        const newCache = { speed: [], optimization: [], bugfix: [], reverse: [] };
+
+        problems.forEach(p => {
+            p.supportedModes.forEach(mode => {
+                if (newCache[mode]) newCache[mode].push(p._id);
+            })
+        })
+
+        problemCache = { ...newCache, lastUpdated: Date.now() };
+    } catch (error) {
+        console.error('[Duel] Cache refresh failed:', error.message);
+    }
+}
+
+async function getRandomProblem(mode) {
+    if (problemCache[mode].length === 0 || Date.now() - problemCache.lastUpdated > 5 * 60 * 1000) {
+        await refreshCache();
+    }
+
+    const availableIds = problemCache[mode];
+    if (!availableIds.length) throw new Error('No problems available for this mode');
+
+    const randomId = availableIds[Math.floor(Math.random() * availableIds.length)];
+    return await DuelProblem.findById(randomId).lean();
+}
+
+// async function getRandomProblem(mode) {
+//     // const problems = await DuelProblem.find({
+//     //     active: true,
+//     //     supportedModes: mode
+//     // });
+
+//     const problems = await DuelProblem.aggregate([
+//         { $match: { active: true, supportedModes: mode } },
+//         { $sample: { size: 1 } }
+//     ])
+//     if (!problems.length) throw new Error('No problems available for this mode');
+//     return problems[0];
+// }
 
 module.exports = function attachDuelSocket(io) {
 
