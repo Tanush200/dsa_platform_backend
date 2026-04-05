@@ -23,12 +23,17 @@ function getRankFromElo(elo) {
 }
 
 async function getRandomProblem(mode) {
-    const problems = await DuelProblem.find({
-        active: true,
-        supportedModes: mode
-    });
+    // const problems = await DuelProblem.find({
+    //     active: true,
+    //     supportedModes: mode
+    // });
+
+    const problems = await DuelProblem.aggregate([
+        { $match: { active: true, supportedModes: mode } },
+        { $sample: { size: 1 } }
+    ])
     if (!problems.length) throw new Error('No problems available for this mode');
-    return problems[Math.floor(Math.random() * problems.length)];
+    return problems[0];
 }
 
 module.exports = function attachDuelSocket(io) {
@@ -50,7 +55,7 @@ module.exports = function attachDuelSocket(io) {
     });
 
     io.on('connection', (socket) => {
-        console.log(`[Duel] Connected: ${socket.username} (${socket.id})`);
+        // console.log(`[Duel] Connected: ${socket.username} (${socket.id})`);
 
         socket.on('duel:joinQueue', async ({ mode = 'speed', elo = 1000 }) => {
             const queue = queues[mode];
