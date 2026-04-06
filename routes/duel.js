@@ -72,7 +72,8 @@ router.get('/history', auth, async (req, res) => {
             .limit(20)
             .populate('players', 'username')
             .populate('winner', 'username')
-            .populate('problem', 'title difficulty');
+            .populate('problem', 'title difficulty')
+            .lean();
         res.json(duels);
     } catch (err) {
         console.log(err);
@@ -216,7 +217,7 @@ router.post('/:id/run', auth, async (req, res) => {
         if (!code || !language) {
             return res.status(400).json({ message: 'code and language are required' });
         }
-        const duel = await Duel.findById(req.params.id).populate('problem');
+        const duel = await Duel.findById(req.params.id).populate('problem').lean();
         if (!duel) return res.status(404).json({ message: 'Duel not found' });
         if (duel.status !== 'active') return res.status(400).json({ message: 'Duel is not active' });
 
@@ -293,8 +294,12 @@ router.post('/:id/submit', auth, async (req, res) => {
             duel.finishedAt = new Date();
 
             const loserId = duel.players.find(p => p.toString() !== duel.winner.toString());
-            const winnerProfile = await getOrCreateProfile(duel.winner.toString());
-            const loserProfile = await getOrCreateProfile(loserId.toString());
+            // const winnerProfile = await getOrCreateProfile(duel.winner.toString());
+            // const loserProfile = await getOrCreateProfile(loserId.toString());
+            const [winnerProfile, loserProfile] = await Promise.all([
+                getOrCreateProfile(duel.winner.toString()),
+                getOrCreateProfile(loserId.toString())
+            ])
 
             const { winner: newWinnerElo, loser: newLoserElo } = calculateElo(winnerProfile.elo, loserProfile.elo);
             const winnerDelta = newWinnerElo - winnerProfile.elo;

@@ -267,7 +267,7 @@ module.exports = function attachDuelSocket(io) {
         socket.on('socket:joinRoom', ({ roomId }) => {
             if (roomId) {
                 socket.join(roomId);
-                console.log(`[Duel] ${socket.username} rejoined room ${roomId}`);
+                // console.log(`[Duel] ${socket.username} rejoined room ${roomId}`);
             }
         });
 
