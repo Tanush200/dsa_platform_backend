@@ -226,8 +226,12 @@ router.post('/:id/run', auth, async (req, res) => {
             return res.status(403).json({ message: 'You are not a player in this duel' });
         }
 
+        let finalCodeToRun = code;
+        if (duel.problem.wrapperCode && duel.problem.wrapperCode[language]) {
+            finalCodeToRun = duel.problem.wrapperCode[language].replace('{{USER_CODE}}', code);
+        }
         const judgeResult = await runAllTestCases({
-            code,
+            code: finalCodeToRun,
             language,
             testCases: duel.problem.testCases
         });

@@ -143,8 +143,13 @@ module.exports = function attachDuelSocket(io) {
                             description: problem.description,
                             difficulty: problem.difficulty,
                             tags: problem.tags,
+                            publicTestCases: problem.testCases.filter(tc => !tc.isHidden).map(tc => ({
+                                input: tc.input,
+                                expectedOutput: tc.expectedOutput
+                            })),
                             ...(mode === 'bugfix' && { buggyCode: problem.buggyCode }),
                             ...(mode === 'reverse' && { reverseOutput: problem.reverseOutput }),
+                            starterCode: problem.starterCode
                         },
                         players: [
                             { userId: player1.userId, username: player1.username, elo: player1.elo },

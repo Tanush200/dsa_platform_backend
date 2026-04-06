@@ -43,6 +43,12 @@ const DuelProblemSchema = new mongoose.Schema({
         javascript: { type: String },
         python: { type: String }
     },
+    starterCode: {
+        cpp: String, java: String, python: String, javascript: String
+    },
+    wrapperCode: {
+        cpp: String, java: String, python: String, javascript: String
+    },
 
     reverseOutput: {
         type: String

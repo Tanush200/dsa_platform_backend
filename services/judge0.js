@@ -21,18 +21,24 @@ async function submitCode({ code, language, stdin = "" }) {
 
     if (!languageId) throw new Error(`Unsupported language: ${language}`);
 
-    const response = await axios.post(
-        `${process.env.JUDGE0_API_URL}/submissions?base64_encoded=false&wait=false`,
-        {
-            source_code: code,
-            language_id: languageId,
-            stdin
-
-        },
-        { headers: JUDGE0_HEADERS }
-    );
-
-    return response.data.token;
+    try {
+        const response = await axios.post(
+            `${process.env.JUDGE0_API_URL}/submissions?base64_encoded=false&wait=false`,
+            {
+                source_code: code,
+                language_id: languageId,
+                stdin
+            },
+            { headers: JUDGE0_HEADERS }
+        );
+        return response.data.token;
+    } catch (err) {
+        if (err.response) {
+            console.error('Judge0 400 Error Details:', err.response.data);
+            throw new Error(`Judge0 API Error: ${JSON.stringify(err.response.data)}`);
+        }
+        throw err;
+    }
 };
 
 async function getResult(token, retries = 8, delay = 1000) {
