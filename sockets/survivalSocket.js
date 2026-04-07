@@ -164,8 +164,8 @@ module.exports = function attachSurvivalSocket(io) {
                     duelId: duel._id,
                     globalTimerEnd,
                     players: {
-                        [p1.userId]: { username: p1.username, points: 0, streak: 0, lives: 3, eliminated: false, socketId: p1.socketId, qIndex: 0, questions: questions1, rank: rank1 },
-                        [p2.userId]: { username: p2.username, points: 0, streak: 0, lives: 3, eliminated: false, socketId: p2.socketId, qIndex: 0, questions: questions2, rank: rank2 }
+                        [p1.userId]: { username: p1.username, points: 0, streak: 0, lives: 4, eliminated: false, socketId: p1.socketId, qIndex: 0, questions: questions1, rank: rank1 },
+                        [p2.userId]: { username: p2.username, points: 0, streak: 0, lives: 4, eliminated: false, socketId: p2.socketId, qIndex: 0, questions: questions2, rank: rank2 }
                     },
                 };
 
@@ -285,8 +285,7 @@ module.exports = function attachSurvivalSocket(io) {
                 p.qIndex += 1;
                 setTimeout(() => nextQuestion(roomId, userId), 1000);
             } else {
-
-                const penalty = Math.floor(q.points / 2);
+                const penalty = 5;
                 p.points = Math.max(0, p.points - penalty);
                 p.lives -= 1;
                 p.streak = 0;
