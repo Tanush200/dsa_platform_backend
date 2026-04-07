@@ -60,12 +60,15 @@ app.use('/api/progress', require('./routes/progress'));
 app.use('/api/settings', require('./routes/settings'));
 app.use('/api/interview', require('./routes/interview'));
 app.use('/api/duel', require('./routes/duel'));
+app.use('/api/survival', require('./routes/survival'));
 
 
 
 const attachDuelSocket = require('./sockets/duelSocket');
 attachDuelSocket(io);
 
+const attachSurvivalSocket = require('./sockets/survivalSocket');
+attachSurvivalSocket(io);
 
 
 mongoose.connect(process.env.MONGODB_URI)

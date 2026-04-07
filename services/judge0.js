@@ -21,13 +21,18 @@ async function submitCode({ code, language, stdin = "" }) {
 
     if (!languageId) throw new Error(`Unsupported language: ${language}`);
 
+    const encode = (str) => {
+        if (!str) return null;
+        return Buffer.from(str).toString('base64');
+    };
+
     try {
         const response = await axios.post(
-            `${process.env.JUDGE0_API_URL}/submissions?base64_encoded=false&wait=false`,
+            `${process.env.JUDGE0_API_URL}/submissions?base64_encoded=true&wait=false`,
             {
-                source_code: code,
+                source_code: encode(code),
                 language_id: languageId,
-                stdin
+                stdin: encode(stdin)
             },
             { headers: JUDGE0_HEADERS }
         );
@@ -46,11 +51,16 @@ async function getResult(token, retries = 8, delay = 1000) {
         await new Promise(res => setTimeout(res, delay));
 
         const response = await axios.get(
-            `${process.env.JUDGE0_API_URL}/submissions/${token}?base64_encoded=false`,
+            `${process.env.JUDGE0_API_URL}/submissions/${token}?base64_encoded=true`,
             { headers: JUDGE0_HEADERS }
         );
 
-        const { status, stdout, stderr, compile_output, time } = response.data;
+        let { status, stdout, stderr, compile_output, time } = response.data;
+
+        const decode = (bs64) => {
+            if (!bs64) return '';
+            return Buffer.from(bs64, 'base64').toString('utf-8');
+        };
 
         if (status.id <= 2) continue;
 
@@ -58,8 +68,8 @@ async function getResult(token, retries = 8, delay = 1000) {
             statusId: status.id,
             statusDesc: status.description,
             passed: status.id === 3,
-            stdout: stdout?.trim() || '',
-            stderr: stderr || compile_output || '',
+            stdout: decode(stdout).trim(),
+            stderr: decode(stderr) || decode(compile_output) || '',
             timeMs: time ? Math.round(parseFloat(time) * 1000) : null
         };
     }
