@@ -1,3 +1,4 @@
+const mongoose = require('mongoose');
 const SurvivalDuel = require('../models/SurvivalDuel');
 const SurvivalQuestion = require('../models/SurvivalQuestion');
 const DuelProfile = require('../models/DuelProfile');
@@ -19,17 +20,36 @@ const RANK_DIFFICULTY = {
 
 async function getQuestionsForRank(rank, count = 50, excludeIds = []) {
     const difficulties = RANK_DIFFICULTY[rank] || ['Easy'];
+    const ninIds = excludeIds.map(id => {
+        try { return new mongoose.Types.ObjectId(id); } catch (e) { return id; }
+    });
+
     return await SurvivalQuestion.aggregate([
         {
             $match: {
                 active: true,
                 difficulty: { $in: difficulties },
-                _id: { $nin: excludeIds }
+                _id: { $nin: ninIds }
             }
         },
         { $sample: { size: count } }
     ]);
 }
+
+const BOT_NAMES = [
+    'Erik_The_Red', 'Bjorn_Ironside', 'Ivar_Boneless', 'Sigurd_SnakeEye',
+    'Lagertha_Code', 'Astrid_Shield', 'Floki_Builder', 'Harald_Finehair',
+    'Rollo_Duke', 'Ubbe_Ragnarsson', 'Gunnhild_Warrior', 'Torvi_Hunter'
+];
+
+const BOT_CONFIG = {
+    Recruit: { accuracy: { Easy: 0.85, Medium: 0.50, Hard: 0.20 }, minDelay: 8000, maxDelay: 14000 },
+    Survivor: { accuracy: { Easy: 0.90, Medium: 0.65, Hard: 0.35 }, minDelay: 7000, maxDelay: 12000 },
+    Fighter: { accuracy: { Easy: 0.95, Medium: 0.75, Hard: 0.50 }, minDelay: 6000, maxDelay: 10000 },
+    Warrior: { accuracy: { Easy: 0.98, Medium: 0.82, Hard: 0.60 }, minDelay: 5000, maxDelay: 9000 },
+    Champion: { accuracy: { Easy: 1.00, Medium: 0.88, Hard: 0.72 }, minDelay: 4000, maxDelay: 7000 },
+    Legend: { accuracy: { Easy: 1.00, Medium: 0.95, Hard: 0.85 }, minDelay: 3000, maxDelay: 6000 },
+};
 
 function serializePlayers(players) {
     const result = {};
@@ -42,7 +62,9 @@ function serializePlayers(players) {
             lives: p.lives,
             eliminated: p.eliminated,
             qIndex: p.qIndex,
-            isConnected: !p.isDisconnected
+            qCount: p.questions?.length || 0,
+            isConnected: p.isBot ? true : !p.isDisconnected,
+            isBot: !!p.isBot
         };
     }
     return result;
@@ -56,6 +78,7 @@ function handleGlobalTimeOut(roomId, io) {
     playerIds.forEach(uid => {
         const p = duel.players[uid];
         if (p.timer) clearTimeout(p.timer);
+        if (p.botActionTimer) clearTimeout(p.botActionTimer);
     });
 
     const p1 = duel.players[playerIds[0]];
@@ -74,8 +97,9 @@ function nextQuestion(roomId, userId, io) {
     const duel = activeDuels[roomId];
     if (!duel) return;
 
-    const p = duel.players[userId];
-    if (!p || p.eliminated) return;
+    const p = duel.players[String(userId)];
+    if (!p) return;
+    if (p.eliminated) return;
 
     const q = p.questions && p.questions[p.qIndex];
     if (!q) {
@@ -91,21 +115,51 @@ function nextQuestion(roomId, userId, io) {
         globalTimerEnd: duel.globalTimerEnd
     });
 
-    io.to(p.socketId).emit('survival:question', {
-        index: p.qIndex,
-        questionText: q.questionText,
-        codeSnippet: q.codeSnippet,
-        options: q.options,
-        type: q.type,
-        difficulty: q.difficulty,
-        points: q.points,
-        timeLimit: TIME_PER_QUESTION
-    });
+    if (!p.isBot && p.socketId) {
+        io.to(p.socketId).emit('survival:question', {
+            index: p.qIndex,
+            questionText: q.questionText,
+            codeSnippet: q.codeSnippet,
+            options: q.options,
+            type: q.type,
+            difficulty: q.difficulty,
+            points: q.points,
+            timeLimit: TIME_PER_QUESTION
+        });
+    }
 
     if (p.timer) clearTimeout(p.timer);
     p.timer = setTimeout(() => {
         evaluateAnswer(roomId, userId, undefined, io);
     }, TIME_PER_QUESTION);
+
+    if (p.isBot) {
+        runBotTurn(roomId, userId, io);
+    }
+}
+
+async function runBotTurn(roomId, botId, io) {
+    const duel = activeDuels[roomId];
+    if (!duel) return;
+    const p = duel.players[botId];
+    if (!p || p.eliminated) return;
+
+    const q = p.questions[p.qIndex];
+    if (!q) return;
+
+    const config = BOT_CONFIG[p.rank] || BOT_CONFIG.Recruit;
+    const delay = Math.floor(Math.random() * (config.maxDelay - config.minDelay)) + config.minDelay;
+
+    if (p.botActionTimer) clearTimeout(p.botActionTimer);
+    p.botActionTimer = setTimeout(() => {
+        if (!activeDuels[roomId] || p.eliminated) return;
+
+        const accuracy = config.accuracy[q.difficulty] || 0.5;
+        const isCorrect = Math.random() < accuracy;
+        const answerIndex = isCorrect ? q.correctAnswer : (q.correctAnswer + 1) % q.options.length;
+
+        evaluateAnswer(roomId, botId, answerIndex, io);
+    }, delay);
 }
 
 async function evaluateAnswer(roomId, userId, ansIndex, io) {
@@ -117,16 +171,19 @@ async function evaluateAnswer(roomId, userId, ansIndex, io) {
 
     p.isProcessing = true;
     if (p.timer) clearTimeout(p.timer);
+    if (p.botActionTimer) clearTimeout(p.botActionTimer);
 
     const q = p.questions && p.questions[p.qIndex];
     if (!q) return;
 
     const isCorrect = ansIndex === q.correctAnswer;
 
-    io.to(p.socketId).emit('survival:roundResult', {
-        correctAnswer: q.correctAnswer,
-        selectedOption: ansIndex
-    });
+    if (!p.isBot && p.socketId) {
+        io.to(p.socketId).emit('survival:roundResult', {
+            correctAnswer: q.correctAnswer,
+            selectedOption: ansIndex
+        });
+    }
 
     if (isCorrect) {
         p.points += q.points;
@@ -150,9 +207,11 @@ async function evaluateAnswer(roomId, userId, ansIndex, io) {
 
         if (p.lives <= 0) {
             p.eliminated = true;
-            io.to(p.socketId).emit('survival:eliminated', {
-                reason: ansIndex === undefined ? 'Time out' : 'No lives remaining'
-            });
+            if (!p.isBot && p.socketId) {
+                io.to(p.socketId).emit('survival:eliminated', {
+                    reason: ansIndex === undefined ? 'Time out' : 'No lives remaining'
+                });
+            }
             checkWinConditions(roomId, io);
         } else {
             p.qIndex += 1;
@@ -202,6 +261,7 @@ async function endDuel(roomId, winnerId, io) {
     Object.values(duelData.players).forEach(p => {
         if (p.timer) clearTimeout(p.timer);
         if (p.abandonmentTimer) clearTimeout(p.abandonmentTimer);
+        if (p.botActionTimer) clearTimeout(p.botActionTimer);
     });
 
     io.to(roomId).emit('survival:stateUpdate', {
@@ -215,9 +275,17 @@ async function endDuel(roomId, winnerId, io) {
     });
 
     try {
+        const finalPlayers = Object.keys(duelData.players).map(uid => ({
+            user: duelData.players[uid].isBot ? null : uid,
+            points: duelData.players[uid].points,
+            streak: duelData.players[uid].bestStreak || 0,
+            eliminated: duelData.players[uid].eliminated
+        }));
+
         await SurvivalDuel.findByIdAndUpdate(duelData.duelId, {
             status: 'finished',
             winner: winnerId,
+            players: finalPlayers,
             finishedAt: new Date()
         });
 
@@ -226,6 +294,7 @@ async function endDuel(roomId, winnerId, io) {
         const profiles = {};
 
         for (const uid of playerIds) {
+            if (duelData.players[uid].isBot) continue;
             let pProfile = await DuelProfile.findOne({ user: uid });
             if (!pProfile) { pProfile = new DuelProfile({ user: uid }); await pProfile.save(); }
             profiles[uid] = pProfile;
@@ -234,54 +303,44 @@ async function endDuel(roomId, winnerId, io) {
         const K = 32;
         if (playerIds.length === 2) {
             const [aId, bId] = playerIds;
-            const eloA = profiles[aId].survivalElo || 1000;
-            const eloB = profiles[bId].survivalElo || 1000;
-            const expectedA = 1 / (1 + Math.pow(10, (eloB - eloA) / 400));
-            const expectedB = 1 - expectedA;
 
-            let scoreA = 0.5, scoreB = 0.5;
-            if (!isTie && String(winnerId) === String(aId)) { scoreA = 1; scoreB = 0; }
-            else if (!isTie && String(winnerId) === String(bId)) { scoreA = 0; scoreB = 1; }
+            for (const uid of [aId, bId]) {
+                const p = duelData.players[uid];
+                if (p.isBot) continue;
 
-            const newEloA = Math.max(100, Math.round(eloA + K * (scoreA - expectedA)));
-            const newEloB = Math.max(100, Math.round(eloB + K * (scoreB - expectedB)));
+                const oppId = uid === aId ? bId : aId;
+                const opp = duelData.players[oppId];
 
-            console.log(`[Survival] Duel Ended. Winner: ${winnerId}, isTie: ${isTie}`);
-            console.log(`[Survival] P1(${aId}): ${eloA} -> ${newEloA} (Score: ${scoreA})`);
-            console.log(`[Survival] P2(${bId}): ${eloB} -> ${newEloB} (Score: ${scoreB})`);
+                const prof = profiles[uid];
+                const elo = prof.survivalElo || 1000;
+                const oppElo = opp.isBot ? elo : (profiles[oppId]?.survivalElo || 1000);
 
-            profiles[aId].survivalElo = newEloA;
-            profiles[aId].survivalTotalDuels = (profiles[aId].survivalTotalDuels || 0) + 1;
-            if (scoreA === 1) profiles[aId].survivalWins = (profiles[aId].survivalWins || 0) + 1;
-            else if (scoreA === 0) profiles[aId].survivalLosses = (profiles[aId].survivalLosses || 0) + 1;
-            profiles[aId].survivalBestStreak = Math.max(profiles[aId].survivalBestStreak || 0, duelData.players[aId].bestStreak);
+                const expected = 1 / (1 + Math.pow(10, (oppElo - elo) / 400));
+                let score = 0.5;
+                if (!isTie && String(winnerId) === String(uid)) score = 1;
+                else if (!isTie && String(winnerId) === String(oppId)) score = 0;
 
-            profiles[bId].survivalElo = newEloB;
-            profiles[bId].survivalTotalDuels = (profiles[bId].survivalTotalDuels || 0) + 1;
-            if (scoreB === 1) profiles[bId].survivalWins = (profiles[bId].survivalWins || 0) + 1;
-            else if (scoreB === 0) profiles[bId].survivalLosses = (profiles[bId].survivalLosses || 0) + 1;
-            profiles[bId].survivalBestStreak = Math.max(profiles[bId].survivalBestStreak || 0, duelData.players[bId].bestStreak);
+                const newElo = Math.max(100, Math.round(elo + K * (score - expected)));
+                const delta = newElo - elo;
 
-            for (const uid of playerIds) {
-                const pData = duelData.players[uid];
-                if (pData && pData.questions && pData.qIndex > 0) {
-                    const seenIds = pData.questions.slice(0, pData.qIndex + 1).map(q => q._id);
-                    const currentSeen = profiles[uid].survivalSeenQuestions || [];
+                prof.survivalElo = newElo;
+                prof.survivalTotalDuels = (prof.survivalTotalDuels || 0) + 1;
+                if (score === 1) prof.survivalWins = (prof.survivalWins || 0) + 1;
+                else if (score === 0) prof.survivalLosses = (prof.survivalLosses || 0) + 1;
+                prof.survivalBestStreak = Math.max(prof.survivalBestStreak || 0, p.bestStreak);
 
-                    const updatedSeen = [...new Set([...currentSeen, ...seenIds])].slice(-500);
-                    profiles[uid].survivalSeenQuestions = updatedSeen;
+                if (p.questions && p.qIndex > 0) {
+                    const seenIds = p.questions.slice(0, p.qIndex + 1).map(q => q._id.toString());
+                    const currentSeen = (prof.survivalSeenQuestions || []).map(id => id.toString());
+                    const uniqueSeen = [...new Set([...currentSeen, ...seenIds])];
+                    prof.survivalSeenQuestions = uniqueSeen.slice(-800);
                 }
+
+                await prof.save();
+
+                const sock = io.sockets.sockets.get(p.socketId);
+                if (sock) sock.emit('survival:eloUpdate', { newElo, delta, rank: prof.survivalRank });
             }
-
-            await profiles[aId].save();
-            console.log(`[Survival] Saved Profile for P1: ${aId}`);
-            await profiles[bId].save();
-            console.log(`[Survival] Saved Profile for P2: ${bId}`);
-
-            const sockA = io.sockets.sockets.get(duelData.players[aId]?.socketId);
-            const sockB = io.sockets.sockets.get(duelData.players[bId]?.socketId);
-            if (sockA) sockA.emit('survival:eloUpdate', { newElo: newEloA, delta: newEloA - eloA, rank: profiles[aId].survivalRank });
-            if (sockB) sockB.emit('survival:eloUpdate', { newElo: newEloB, delta: newEloB - eloB, rank: profiles[bId].survivalRank });
         }
     } catch (e) {
         console.error('Error saving duel', e);
@@ -305,66 +364,89 @@ async function startSurvivalDuel(p1, p2, io) {
 
         const [prof1, prof2] = await Promise.all([
             DuelProfile.findOne({ user: p1.userId }),
-            DuelProfile.findOne({ user: p2.userId })
+            p2.isBot ? null : DuelProfile.findOne({ user: p2.userId })
         ]);
 
         const rank1 = prof1?.survivalRank || 'Recruit';
-        const rank2 = prof2?.survivalRank || 'Recruit';
-        let exclude1 = prof1?.survivalSeenQuestions || [];
-        let exclude2 = prof2?.survivalSeenQuestions || [];
+        const rank2 = p2.isBot ? rank1 : (prof2?.survivalRank || 'Recruit');
 
         const [questions1, questions2] = await Promise.all([
-            getQuestionsForRank(rank1, 60, exclude1),
-            getQuestionsForRank(rank2, 60, exclude2)
+            getQuestionsForRank(rank1, 60, prof1?.survivalSeenQuestions || []),
+            getQuestionsForRank(rank2, 60, p2.isBot ? [] : (prof2?.survivalSeenQuestions || []))
         ]);
 
         const p1Socket = io.sockets.sockets.get(p1.socketId);
-        const p2Socket = io.sockets.sockets.get(p2.socketId);
         if (p1Socket) { p1Socket.join(roomId); p1Socket.roomId = roomId; }
-        if (p2Socket) { p2Socket.join(roomId); p2Socket.roomId = roomId; }
+
+        let p2Socket = null;
+        if (!p2.isBot) {
+            p2Socket = io.sockets.sockets.get(p2.socketId);
+            if (p2Socket) { p2Socket.join(roomId); p2Socket.roomId = roomId; }
+        }
 
         const globalTimerEnd = Date.now() + DUEL_MAX_TIME + 3000;
+        const p1Id = String(p1.userId);
+        const p2Id = String(p2.userId);
+
         activeDuels[roomId] = {
             roomId,
             duelId: duelModel._id,
             globalTimerEnd,
             players: {
-                [p1.userId]: { username: p1.username, points: 0, streak: 0, bestStreak: 0, lives: 4, eliminated: false, socketId: p1.socketId, qIndex: 0, questions: questions1, rank: rank1, isDisconnected: false },
-                [p2.userId]: { username: p2.username, points: 0, streak: 0, bestStreak: 0, lives: 4, eliminated: false, socketId: p2.socketId, qIndex: 0, questions: questions2, rank: rank2, isDisconnected: false }
+                [p1Id]: { username: p1.username, points: 0, streak: 0, bestStreak: 0, lives: 4, eliminated: false, socketId: p1.socketId, qIndex: 0, questions: questions1, rank: rank1, isDisconnected: false, isBot: false },
+                [p2Id]: {
+                    username: p2.username, points: 0, streak: 0, bestStreak: 0, lives: 4, eliminated: false,
+                    socketId: p2.socketId, qIndex: 0, questions: questions2, rank: rank2,
+                    isDisconnected: false, isBot: !!p2.isBot
+                }
             },
         };
+
+        console.log(`[Survival] Duel Created: ${roomId}. Players: [${p1Id}, ${p2Id}]`);
 
         io.to(roomId).emit('survival:matched', {
             roomId,
             duelId: duelModel._id.toString(),
-            players: [p1.username, p2.username],
+            players: serializePlayers(activeDuels[roomId].players),
             globalTimerEnd,
-            ranks: { [p1.userId]: rank1, [p2.userId]: rank2 }
+            ranks: { [p1Id]: rank1, [p2Id]: rank2 }
         });
 
         activeDuels[roomId].globalTimer = setTimeout(() => handleGlobalTimeOut(roomId, io), DUEL_MAX_TIME + 3000);
         setTimeout(() => {
-            nextQuestion(roomId, p1.userId, io);
-            nextQuestion(roomId, p2.userId, io);
-        }, 3000);
+            console.log(`[Survival] Duel Start: Triggering nextQuestion for ${p1Id} and ${p2Id}`);
+            nextQuestion(roomId, p1Id, io);
+            nextQuestion(roomId, p2Id, io);
+        }, 5000);
     } catch (err) { console.error("Match error:", err); }
 }
 
 module.exports = function attachSurvivalSocket(io) {
     setInterval(() => {
-        if (queue.length < 2) return;
+        if (queue.length === 0) return;
 
         let i = 0;
         while (i < queue.length) {
             const p1 = queue[i];
             const timeInQueue = Date.now() - p1.joinedAt;
-            const allowedGap = timeInQueue > 15000 ? 600 : 300;
+
+            if (timeInQueue > 12000) {
+                queue.splice(i, 1);
+                const botName = BOT_NAMES[Math.floor(Math.random() * BOT_NAMES.length)];
+                startSurvivalDuel(p1, {
+                    userId: new mongoose.Types.ObjectId(),
+                    username: botName,
+                    isBot: true
+                }, io);
+                continue;
+            }
+
+            const allowedGap = timeInQueue > 10000 ? 600 : (timeInQueue > 5000 ? 300 : 100);
 
             let matchedIdx = -1;
             for (let j = i + 1; j < queue.length; j++) {
                 const p2 = queue[j];
-                const eloDiff = Math.abs(p1.elo - p2.elo);
-                if (eloDiff <= allowedGap) {
+                if (Math.abs(p1.elo - p2.elo) <= allowedGap) {
                     matchedIdx = j;
                     break;
                 }
@@ -381,29 +463,18 @@ module.exports = function attachSurvivalSocket(io) {
     }, 2000);
 
     io.on('connection', (socket) => {
-        if (!socket.userId) return;
+        if (!socket.userId) {
+            console.log(`[Survival] Unauthenticated socket connection attempt: ${socket.id}`);
+            return;
+        }
 
         socket.on('survival:joinQueue', async () => {
-            const alreadyInQueue = queue.find(p => p.userId === socket.userId);
-            if (alreadyInQueue) return;
-
+            if (queue.find(p => p.userId === socket.userId)) return;
             try {
                 const profile = await DuelProfile.findOne({ user: socket.userId });
-                const elo = profile?.survivalElo || 1000;
-
-                queue.push({
-                    userId: socket.userId,
-                    socketId: socket.id,
-                    username: socket.username,
-                    elo,
-                    joinedAt: Date.now()
-                });
-
+                queue.push({ userId: socket.userId, socketId: socket.id, username: socket.username, elo: profile?.survivalElo || 1000, joinedAt: Date.now() });
                 socket.emit('survival:queued', { position: queue.length });
-            } catch (err) {
-                console.error("Join Queue error:", err);
-                socket.emit('survival:error', { message: "Failed to join queue" });
-            }
+            } catch (err) { socket.emit('survival:error', { message: "Failed to join queue" }); }
         });
 
         socket.on('survival:leaveQueue', () => {
@@ -413,16 +484,15 @@ module.exports = function attachSurvivalSocket(io) {
         socket.on('survival:reconnect', ({ roomId }) => {
             const duel = activeDuels[roomId];
             if (!duel) return;
-            const p = duel.players[socket.userId];
+            const uid = String(socket.userId);
+            const p = duel.players[uid];
             if (!p) return;
+            if (p.isBot) return;
 
             p.isDisconnected = false;
             p.socketId = socket.id;
             socket.roomId = roomId;
-            if (p.abandonmentTimer) {
-                clearTimeout(p.abandonmentTimer);
-                p.abandonmentTimer = null;
-            }
+            if (p.abandonmentTimer) { clearTimeout(p.abandonmentTimer); p.abandonmentTimer = null; }
 
             socket.join(roomId);
             io.to(roomId).emit('survival:stateUpdate', { players: serializePlayers(duel.players), globalTimerEnd: duel.globalTimerEnd });
@@ -431,14 +501,8 @@ module.exports = function attachSurvivalSocket(io) {
                 const q = p.questions && p.questions[p.qIndex];
                 if (q) {
                     io.to(socket.id).emit('survival:question', {
-                        index: p.qIndex,
-                        questionText: q.questionText,
-                        codeSnippet: q.codeSnippet,
-                        options: q.options,
-                        type: q.type,
-                        difficulty: q.difficulty,
-                        points: q.points,
-                        timeLimit: TIME_PER_QUESTION
+                        index: p.qIndex, questionText: q.questionText, codeSnippet: q.codeSnippet,
+                        options: q.options, type: q.type, difficulty: q.difficulty, points: q.points, timeLimit: TIME_PER_QUESTION
                     });
                 }
             }
@@ -450,20 +514,15 @@ module.exports = function attachSurvivalSocket(io) {
 
         socket.on('disconnect', () => {
             queue = queue.filter(p => p.userId !== socket.userId);
-
             if (socket.roomId) {
                 const duel = activeDuels[socket.roomId];
                 if (duel) {
                     const p = duel.players[socket.userId];
-                    if (p && !p.eliminated) {
+                    if (p && !p.eliminated && !p.isBot) {
                         p.isDisconnected = true;
                         io.to(socket.roomId).emit('survival:stateUpdate', { players: serializePlayers(duel.players), globalTimerEnd: duel.globalTimerEnd });
-
                         p.abandonmentTimer = setTimeout(() => {
-                            if (p.isDisconnected) {
-                                p.eliminated = true;
-                                checkWinConditions(socket.roomId, io);
-                            }
+                            if (p.isDisconnected) { p.eliminated = true; checkWinConditions(socket.roomId, io); }
                         }, 30000);
                     }
                 }

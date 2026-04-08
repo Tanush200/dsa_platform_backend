@@ -1,7 +1,7 @@
 const mongoose = require('mongoose');
 
 const SurvivalQuestionSchema = new mongoose.Schema({
-    questionText: { type: String, required: true },
+    questionText: { type: String, required: true, index: true },
     codeSnippet: { type: String, default: "" },
     options: [{ type: String, required: true }],
     correctAnswer: { type: Number, required: true },
