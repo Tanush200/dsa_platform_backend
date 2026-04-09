@@ -911,42 +911,36 @@ async function endDuel(roomId, winnerId, io, existingDuel = null) {
                     prof.survivalSeenQuestions = uniqueSeen.slice(-800);
                 }
 
-                // --- DAILY STREAK LOGIC (Local Sync) ---
-                const now = new Date();
-                const todayStr = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}-${String(now.getDate()).padStart(2, '0')}`;
+                // --- DAILY STREAK LOGIC (History Based - IST Sync) ---
+                const istNow = new Date();
+                const istTodayStr = istNow.toLocaleDateString('en-CA', { timeZone: 'Asia/Kolkata' }); 
+                
+                const istYesterday = new Date(istNow);
+                istYesterday.setDate(istYesterday.getDate() - 1);
+                const istYesterdayStr = istYesterday.toLocaleDateString('en-CA', { timeZone: 'Asia/Kolkata' });
+                
+                const userHistory = prof.survivalActivityHistory || [];
+                const playedToday = userHistory.includes(istTodayStr);
+                const playedYesterday = userHistory.includes(istYesterdayStr);
 
-                let shouldUpdateStreak = false;
-                const lastStreakDate = prof.lastDailyStreakAt;
+                console.log(`[StreakDebug] User: ${uid}, Today: ${istTodayStr}, History: ${userHistory.slice(-5)}`);
 
-                if (!lastStreakDate) {
-                    prof.dailyStreak = 1;
-                    shouldUpdateStreak = true;
-                } else {
-                    const d1 = new Date(now.getFullYear(), now.getMonth(), now.getDate());
-                    const d2 = new Date(lastStreakDate.getFullYear(), lastStreakDate.getMonth(), lastStreakDate.getDate());
-                    const diffDays = Math.floor((d1 - d2) / (1000 * 60 * 60 * 24));
-
-                    if (diffDays === 1) {
-                        prof.dailyStreak += 1;
-                        shouldUpdateStreak = true;
-                    } else if (diffDays > 1) {
+                if (!playedToday) {
+                    if (playedYesterday) {
+                        prof.dailyStreak = (prof.dailyStreak || 0) + 1;
+                        console.log(`[StreakDebug] Streak UP to ${prof.dailyStreak}`);
+                    } else {
                         prof.dailyStreak = 1;
-                        shouldUpdateStreak = true;
+                        console.log(`[StreakDebug] Streak RESET to 1`);
                     }
+                    prof.lastDailyStreakAt = istNow;
+                    prof.survivalActivityHistory.push(istTodayStr);
+                    if (prof.survivalActivityHistory.length > 365) prof.survivalActivityHistory.shift();
+                } else {
+                    console.log(`[StreakDebug] Already played Today. Streak: ${prof.dailyStreak}`);
                 }
 
-                if (shouldUpdateStreak) {
-                    prof.lastDailyStreakAt = now;
-                }
-
-                prof.lastDuelAt = now;
-                if (!prof.survivalActivityHistory.includes(todayStr)) {
-                    prof.survivalActivityHistory.push(todayStr);
-                    if (prof.survivalActivityHistory.length > 365) {
-                        prof.survivalActivityHistory.shift();
-                    }
-                }
-
+                prof.lastDuelAt = istNow;
                 await prof.save();
 
                 const sock = io.sockets.sockets.get(p.socketId);
