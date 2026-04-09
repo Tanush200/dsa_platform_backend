@@ -5,6 +5,9 @@ const dotenv = require('dotenv');
 const cookieParser = require('cookie-parser');
 const http = require('http');
 const { Server } = require('socket.io');
+const { createAdapter } = require('@socket.io/redis-adapter');
+const Redis = require('ioredis');
+
 
 dotenv.config();
 
@@ -12,6 +15,8 @@ const app = express();
 const server = http.createServer(app);
 
 const allowedOrigins = ["https://dsa-platform-frontend-nu.vercel.app"];
+
+
 
 const io = new Server(server, {
   cors: {
@@ -21,6 +26,8 @@ const io = new Server(server, {
     credentials: true
   }
 });
+
+global.io = io;
 
 app.use(cookieParser());
 app.use(
@@ -63,12 +70,21 @@ app.use('/api/duel', require('./routes/duel'));
 app.use('/api/survival', require('./routes/survival'));
 
 
+const pubClient = new Redis(process.env.REDIS_URL || "redis://localhost:6379");
+const subClient = pubClient.duplicate();
+
+io.adapter(createAdapter(pubClient, subClient));
+
+pubClient.on("error", (err) => console.error("Redis Pub Error", err));
+subClient.on("error", (err) => console.error("Redis Sub Error", err));
 
 const attachDuelSocket = require('./sockets/duelSocket');
 attachDuelSocket(io);
 
 const attachSurvivalSocket = require('./sockets/survivalSocket');
 attachSurvivalSocket(io);
+
+require('./workers/survivalWorker');
 
 
 mongoose.connect(process.env.MONGODB_URI)

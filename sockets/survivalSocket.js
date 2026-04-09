@@ -539,6 +539,7 @@ const SurvivalQuestion = require('../models/SurvivalQuestion');
 const DuelProfile = require('../models/DuelProfile');
 const { v4: uuidv4 } = require('uuid');
 const { redis, getJson, setJson, del } = require('../services/redis');
+const { addQuestionTimer, addGlobalTimer } = require('../services/survivalQueue');
 
 
 const REDIS_QUEUE_KEY = 'survival:queue';
@@ -667,12 +668,8 @@ async function nextQuestion(roomId, userId, io) {
         });
     }
 
-    setTimeout(async () => {
-        const currentDuel = await getJson(REDIS_DUEL_PREFIX + roomId);
-        if (currentDuel && currentDuel.players[userId]?.qIndex === p.qIndex && !currentDuel.players[userId]?.isProcessing) {
-            await evaluateAnswer(roomId, userId, undefined, io);
-        }
-    }, TIME_PER_QUESTION);
+    await addQuestionTimer(roomId, userId, p.qIndex, TIME_PER_QUESTION);
+
 
     if (p.isBot) {
         await runBotTurn(roomId, userId, io);
@@ -708,7 +705,7 @@ async function evaluateAnswer(roomId, userId, ansIndex, io) {
     if (!duel) return;
 
     const p = duel.players[userId];
-    if (!p || p.eliminated || p.isProcessing) return;
+    if (!p || p.eliminated || (p.isProcessing && ansIndex !== undefined)) return;
 
     p.isProcessing = true;
 
@@ -954,7 +951,7 @@ async function startSurvivalDuel(p1, p2, io) {
             ranks: { [p1Id]: rank1, [p2Id]: rank2 }
         });
 
-        setTimeout(() => handleGlobalTimeOut(roomId, io), DUEL_MAX_TIME + 3000);
+        await addGlobalTimer(roomId, DUEL_MAX_TIME + 3000);
         setTimeout(() => {
             nextQuestion(roomId, p1Id, io);
             nextQuestion(roomId, p2Id, io);
@@ -1111,3 +1108,6 @@ module.exports = function attachSurvivalSocket(io) {
         });
     });
 };
+
+module.exports.evaluateAnswer = evaluateAnswer;
+module.exports.handleGlobalTimeOut = handleGlobalTimeOut;
