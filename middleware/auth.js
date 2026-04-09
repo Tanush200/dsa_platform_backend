@@ -6,7 +6,11 @@ function auth(req, res, next) {
   if (!token) return res.status(401).json({ message: 'Access denied. No token provided.' });
 
   try {
-    const decoded = jwt.verify(token, process.env.JWT_SECRET || 'superDsaSecretKey2026!');
+    const secret = process.env.JWT_SECRET;
+    if (!secret && process.env.NODE_ENV === 'production') {
+      throw new Error('JWT_SECRET is missing in production environment');
+    }
+    const decoded = jwt.verify(token, secret || 'superDsaSecretKey2026!');
     req.user = decoded;
     next();
   } catch (error) {

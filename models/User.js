@@ -12,7 +12,8 @@ const UserSchema = new mongoose.Schema({
   },
   nickname: {
     type: String,
-    default: ""
+    default: "",
+    index: true
   },
   role: {
     type: String,

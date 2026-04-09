@@ -303,7 +303,7 @@ module.exports = function attachDuelSocket(io) {
                 }
                 delete socketUserMap[socket.id];
             }
-            console.log(`[Duel] Disconnected: ${socket.username} (${socket.id})`);
+            // console.log(`[Duel] Disconnected: ${socket.username} (${socket.id})`);
         });
     });
 };

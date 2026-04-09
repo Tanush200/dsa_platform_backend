@@ -614,20 +614,30 @@ function serializePlayers(players) {
 
 
 async function handleGlobalTimeOut(roomId, io) {
-    const duel = await getJson(REDIS_DUEL_PREFIX + roomId);
-    if (!duel) return;
+    if (!await acquireLock(roomId)) return;
 
-    const playerIds = Object.keys(duel.players);
-    const p1 = duel.players[playerIds[0]];
-    const p2 = duel.players[playerIds[1]];
+    try {
+        const duel = await getJson(REDIS_DUEL_PREFIX + roomId);
+        if (!duel) return;
 
-    let winnerId = null;
-    if (p1.points > p2.points) winnerId = playerIds[0];
-    else if (p2.points > p1.points) winnerId = playerIds[1];
-    else if (p1.bestStreak > p2.bestStreak) winnerId = playerIds[0];
-    else if (p2.bestStreak > p1.bestStreak) winnerId = playerIds[1];
+        let winnerId = null;
+        let maxPoints = -1;
 
-    await endDuel(roomId, winnerId, io);
+        for (const [uid, p] of Object.entries(duel.players)) {
+            if (p.points > maxPoints) {
+                maxPoints = p.points;
+                winnerId = uid;
+            } else if (p.points === maxPoints) {
+                winnerId = null; // Tie
+            }
+        }
+
+        await endDuel(roomId, winnerId, io, duel);
+    } catch (err) {
+        console.error("Global Timeout error:", err);
+    } finally {
+        await releaseLock(roomId);
+    }
 }
 
 async function nextQuestion(roomId, userId, io) {
@@ -700,67 +710,95 @@ async function runBotTurn(roomId, botId, io) {
     }, delay);
 }
 
-async function evaluateAnswer(roomId, userId, ansIndex, io) {
-    let duel = await getJson(REDIS_DUEL_PREFIX + roomId);
-    if (!duel) return;
+async function acquireLock(roomId, timeout = 5000) {
+    const lockKey = `lock:survival:${roomId}`;
+    const result = await redis.set(lockKey, '1', 'PX', timeout, 'NX');
+    return result === 'OK';
+}
 
-    const p = duel.players[userId];
-    if (!p || p.eliminated || (p.isProcessing && ansIndex !== undefined)) return;
+async function releaseLock(roomId) {
+    await del(`lock:survival:${roomId}`);
+}
 
-    p.isProcessing = true;
-
-    const q = p.questions && p.questions[p.qIndex];
-    if (!q) {
-        await setJson(REDIS_DUEL_PREFIX + roomId, duel);
-        return;
+async function evaluateAnswer(roomId, userId, selectedOptionIndex, io) {
+    // Acquire lock to prevent race conditions
+    let lockAcquired = false;
+    for (let i = 0; i < 5; i++) {
+        if (await acquireLock(roomId)) {
+            lockAcquired = true;
+            break;
+        }
+        await new Promise(r => setTimeout(r, 100)); // retry
     }
 
-    const isCorrect = ansIndex === q.correctAnswer;
+    if (!lockAcquired) return; // Silent fail if lock cannot be acquired
 
-    if (!p.isBot && p.socketId) {
-        io.to(p.socketId).emit('survival:roundResult', {
-            correctAnswer: q.correctAnswer,
-            selectedOption: ansIndex
-        });
-    }
+    try {
+        let duel = await getJson(REDIS_DUEL_PREFIX + roomId);
+        if (!duel) return;
 
-    if (isCorrect) {
-        p.points += q.points;
-        p.streak += 1;
-        p.bestStreak = Math.max(p.bestStreak || 0, p.streak);
+        const p = duel.players[userId];
+        if (!p || p.eliminated || (p.isProcessing && selectedOptionIndex !== undefined)) return;
 
-        const playerIds = Object.keys(duel.players);
-        const oppId = playerIds.find(id => id !== userId);
-        const opp = duel.players[oppId];
+        p.isProcessing = true;
 
-        if (opp && opp.eliminated && p.points > opp.points) {
+        const q = p.questions && p.questions[p.qIndex];
+        if (!q) {
             await setJson(REDIS_DUEL_PREFIX + roomId, duel);
-            return await endDuel(roomId, userId, io, duel);
+            return;
         }
 
-        p.qIndex += 1;
-        await setJson(REDIS_DUEL_PREFIX + roomId, duel);
-        setTimeout(() => nextQuestion(roomId, userId, io), 1000);
-    } else {
-        const penalty = 5;
-        p.points = Math.max(0, p.points - penalty);
-        p.lives -= 1;
-        p.streak = 0;
+        const isCorrect = selectedOptionIndex === q.correctAnswer;
 
-        if (p.lives <= 0) {
-            p.eliminated = true;
-            if (!p.isBot && p.socketId) {
-                io.to(p.socketId).emit('survival:eliminated', {
-                    reason: ansIndex === undefined ? 'Time out' : 'No lives remaining'
-                });
+        if (!p.isBot && p.socketId) {
+            io.to(p.socketId).emit('survival:roundResult', {
+                correctAnswer: q.correctAnswer,
+                selectedOption: selectedOptionIndex
+            });
+        }
+
+        if (isCorrect) {
+            p.points += q.points;
+            p.streak += 1;
+            p.bestStreak = Math.max(p.bestStreak || 0, p.streak);
+
+            const playerIds = Object.keys(duel.players);
+            const oppId = playerIds.find(id => id !== userId);
+            const opp = duel.players[oppId];
+
+            if (opp && opp.eliminated && p.points > opp.points) {
+                await setJson(REDIS_DUEL_PREFIX + roomId, duel);
+                return await endDuel(roomId, userId, io, duel);
             }
-            await setJson(REDIS_DUEL_PREFIX + roomId, duel);
-            await checkWinConditions(roomId, io, duel);
-        } else {
+
             p.qIndex += 1;
             await setJson(REDIS_DUEL_PREFIX + roomId, duel);
             setTimeout(() => nextQuestion(roomId, userId, io), 1000);
+        } else {
+            const penalty = 5;
+            p.points = Math.max(0, p.points - penalty);
+            p.lives -= 1;
+            p.streak = 0;
+
+            if (p.lives <= 0) {
+                p.eliminated = true;
+                if (!p.isBot && p.socketId) {
+                    io.to(p.socketId).emit('survival:eliminated', {
+                        reason: selectedOptionIndex === undefined ? 'Time out' : 'No lives remaining'
+                    });
+                }
+                await setJson(REDIS_DUEL_PREFIX + roomId, duel);
+                await checkWinConditions(roomId, io, duel);
+            } else {
+                p.qIndex += 1;
+                await setJson(REDIS_DUEL_PREFIX + roomId, duel);
+                setTimeout(() => nextQuestion(roomId, userId, io), 1000);
+            }
         }
+    } catch (err) {
+        console.error("Evaluate error:", err);
+    } finally {
+        await releaseLock(roomId);
     }
 }
 
@@ -894,7 +932,7 @@ async function endDuel(roomId, winnerId, io, existingDuel = null) {
                 }
                 prof.lastDuelAt = now;
 
-                const todayStr = now.toISOString().split('T')[0];
+                const todayStr = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}-${String(now.getDate()).padStart(2, '0')}`;
                 if (!prof.survivalActivityHistory.includes(todayStr)) {
                     prof.survivalActivityHistory.push(todayStr);
                     if (prof.survivalActivityHistory.length > 365) {

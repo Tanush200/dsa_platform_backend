@@ -3,6 +3,7 @@ const router = express.Router();
 const { auth, admin } = require('../middleware/auth');
 const SurvivalQuestion = require('../models/SurvivalQuestion');
 const SurvivalDuel = require('../models/SurvivalDuel');
+const DuelProfile = require('../models/DuelProfile');
 
 
 router.get('/questions', auth, async (req, res) => {
@@ -90,7 +91,6 @@ router.get('/duel/:id', auth, async (req, res) => {
 
 router.get('/leaderboard', auth, async (req, res) => {
     try {
-        const DuelProfile = require('../models/DuelProfile');
         const top = await DuelProfile.find({ survivalTotalDuels: { $gt: 0 } })
             .sort({ survivalElo: -1 })
             .limit(50)
@@ -106,7 +106,6 @@ router.get('/leaderboard', auth, async (req, res) => {
 
 router.get('/my-profile', auth, async (req, res) => {
     try {
-        const DuelProfile = require('../models/DuelProfile');
         let profile = await DuelProfile.findOne({ user: req.user.id }).lean();
         if (!profile) return res.json({ survivalElo: 1000, survivalRank: 'Recruit', survivalWins: 0, survivalLosses: 0, survivalBestStreak: 0, survivalTotalDuels: 0 });
         res.json(profile);
