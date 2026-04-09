@@ -596,7 +596,7 @@ function serializePlayers(players) {
     const result = {};
     for (const [uid, p] of Object.entries(players)) {
         result[uid] = {
-            username: p.username,
+            username: p.nickname || p.username,
             points: p.points,
             streak: p.streak,
             bestStreak: p.bestStreak || 0,
@@ -873,10 +873,44 @@ async function endDuel(roomId, winnerId, io, existingDuel = null) {
                     prof.survivalSeenQuestions = uniqueSeen.slice(-800);
                 }
 
+                // --- DAILY STREAK LOGIC ---
+                const now = new Date();
+                if (!prof.lastDailyStreakAt) {
+                    prof.dailyStreak = 1;
+                    prof.lastDailyStreakAt = now;
+                } else {
+                    const lastDate = new Date(prof.lastDailyStreakAt);
+                    const d1 = new Date(now.getFullYear(), now.getMonth(), now.getDate());
+                    const d2 = new Date(lastDate.getFullYear(), lastDate.getMonth(), lastDate.getDate());
+                    const diffDays = Math.round((d1 - d2) / (1000 * 60 * 60 * 24));
+
+                    if (diffDays === 1) {
+                        prof.dailyStreak += 1;
+                        prof.lastDailyStreakAt = now;
+                    } else if (diffDays > 1) {
+                        prof.dailyStreak = 1;
+                        prof.lastDailyStreakAt = now;
+                    }
+                }
+                prof.lastDuelAt = now;
+
+                const todayStr = now.toISOString().split('T')[0];
+                if (!prof.survivalActivityHistory.includes(todayStr)) {
+                    prof.survivalActivityHistory.push(todayStr);
+                    if (prof.survivalActivityHistory.length > 365) {
+                        prof.survivalActivityHistory.shift();
+                    }
+                }
+
                 await prof.save();
 
                 const sock = io.sockets.sockets.get(p.socketId);
-                if (sock) sock.emit('survival:eloUpdate', { newElo, delta, rank: prof.survivalRank });
+                if (sock) sock.emit('survival:eloUpdate', {
+                    newElo,
+                    delta,
+                    rank: prof.survivalRank,
+                    dailyStreak: prof.dailyStreak
+                });
             }
         }
     } catch (e) {
@@ -1022,11 +1056,12 @@ module.exports = function attachSurvivalSocket(io) {
             if (queueData.find(item => JSON.parse(item).userId === socket.userId)) return;
 
             try {
-                const profile = await DuelProfile.findOne({ user: socket.userId });
+                const profile = await DuelProfile.findOne({ user: socket.userId }).populate('user', 'nickname');
                 const player = {
                     userId: socket.userId,
                     socketId: socket.id,
                     username: socket.username,
+                    nickname: profile?.user?.nickname || "",
                     elo: profile?.survivalElo || 1000,
                     joinedAt: Date.now()
                 };

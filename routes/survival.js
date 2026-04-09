@@ -94,7 +94,7 @@ router.get('/leaderboard', auth, async (req, res) => {
         const top = await DuelProfile.find({ survivalTotalDuels: { $gt: 0 } })
             .sort({ survivalElo: -1 })
             .limit(50)
-            .populate('user', 'username')
+            .populate('user', 'username nickname')
             .lean();
         res.json(top);
     } catch (err) {

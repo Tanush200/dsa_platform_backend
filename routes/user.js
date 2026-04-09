@@ -30,4 +30,23 @@ router.put('/timeline', auth, async (req, res) => {
   }
 });
 
+router.put('/nickname', auth, async (req, res) => {
+  try {
+    const { nickname } = req.body;
+    if (!nickname || nickname.length < 3 || nickname.length > 15) {
+      return res.status(400).json({ message: 'Nickname must be between 3 and 15 characters' });
+    }
+
+    const user = await User.findByIdAndUpdate(
+      req.user.id,
+      { nickname },
+      { new: true }
+    ).select('-password');
+
+    res.json(user);
+  } catch (err) {
+    res.status(500).json({ message: 'Server error' });
+  }
+});
+
 module.exports = router;

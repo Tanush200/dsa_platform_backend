@@ -40,6 +40,14 @@ const DuelProfileSchema = new mongoose.Schema({
         type: Number,
         default: 0
     },
+    lastDailyStreakAt: {
+        type: Date,
+        default: null
+    },
+    dailyStreak: {
+        type: Number,
+        default: 0
+    },
     lastDuelAt: {
         type: Date,
         default: null
@@ -72,7 +80,8 @@ const DuelProfileSchema = new mongoose.Schema({
     survivalSeenQuestions: [{
         type: mongoose.Schema.Types.ObjectId,
         ref: 'SurvivalQuestion'
-    }]
+    }],
+    survivalActivityHistory: [String]
 }, { timestamps: true });
 
 
