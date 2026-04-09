@@ -911,28 +911,35 @@ async function endDuel(roomId, winnerId, io, existingDuel = null) {
                     prof.survivalSeenQuestions = uniqueSeen.slice(-800);
                 }
 
-                // --- DAILY STREAK LOGIC ---
+                // --- DAILY STREAK LOGIC (Local Sync) ---
                 const now = new Date();
-                if (!prof.lastDailyStreakAt) {
+                const todayStr = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}-${String(now.getDate()).padStart(2, '0')}`;
+
+                let shouldUpdateStreak = false;
+                const lastStreakDate = prof.lastDailyStreakAt;
+
+                if (!lastStreakDate) {
                     prof.dailyStreak = 1;
-                    prof.lastDailyStreakAt = now;
+                    shouldUpdateStreak = true;
                 } else {
-                    const lastDate = new Date(prof.lastDailyStreakAt);
                     const d1 = new Date(now.getFullYear(), now.getMonth(), now.getDate());
-                    const d2 = new Date(lastDate.getFullYear(), lastDate.getMonth(), lastDate.getDate());
-                    const diffDays = Math.round((d1 - d2) / (1000 * 60 * 60 * 24));
+                    const d2 = new Date(lastStreakDate.getFullYear(), lastStreakDate.getMonth(), lastStreakDate.getDate());
+                    const diffDays = Math.floor((d1 - d2) / (1000 * 60 * 60 * 24));
 
                     if (diffDays === 1) {
                         prof.dailyStreak += 1;
-                        prof.lastDailyStreakAt = now;
+                        shouldUpdateStreak = true;
                     } else if (diffDays > 1) {
                         prof.dailyStreak = 1;
-                        prof.lastDailyStreakAt = now;
+                        shouldUpdateStreak = true;
                     }
                 }
-                prof.lastDuelAt = now;
 
-                const todayStr = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}-${String(now.getDate()).padStart(2, '0')}`;
+                if (shouldUpdateStreak) {
+                    prof.lastDailyStreakAt = now;
+                }
+
+                prof.lastDuelAt = now;
                 if (!prof.survivalActivityHistory.includes(todayStr)) {
                     prof.survivalActivityHistory.push(todayStr);
                     if (prof.survivalActivityHistory.length > 365) {
