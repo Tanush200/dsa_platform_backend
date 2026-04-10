@@ -621,16 +621,20 @@ async function handleGlobalTimeOut(roomId, io) {
         if (!duel) return;
 
         let winnerId = null;
-        let maxPoints = -1;
+        const pIds = Object.keys(duel.players);
+        const p1Id = pIds[0];
+        const p2Id = pIds[1];
+        const p1 = duel.players[p1Id];
+        const p2 = duel.players[p2Id];
 
-        for (const [uid, p] of Object.entries(duel.players)) {
-            if (p.points > maxPoints) {
-                maxPoints = p.points;
-                winnerId = uid;
-            } else if (p.points === maxPoints) {
-                winnerId = null; // Tie
-            }
-        }
+        if (p1.points > p2.points) winnerId = p1Id;
+        else if (p2.points > p1.points) winnerId = p2Id;
+        else if (!p1.eliminated && p2.eliminated) winnerId = p1Id;
+        else if (!p2.eliminated && p1.eliminated) winnerId = p2Id;
+        else if (p1.qIndex > p2.qIndex) winnerId = p1Id;
+        else if (p2.qIndex > p1.qIndex) winnerId = p2Id;
+        else if (p1.bestStreak > p2.bestStreak) winnerId = p1Id;
+        else if (p2.bestStreak > p1.bestStreak) winnerId = p2Id;
 
         await endDuel(roomId, winnerId, io, duel);
     } catch (err) {
@@ -821,6 +825,8 @@ async function checkWinConditions(roomId, io, existingDuel = null) {
         let winner = null;
         if (p1.points > p2.points) winner = p1Id;
         else if (p2.points > p1.points) winner = p2Id;
+        else if (p1.qIndex > p2.qIndex) winner = p1Id;
+        else if (p2.qIndex > p1.qIndex) winner = p2Id;
         else if (p1.bestStreak > p2.bestStreak) winner = p1Id;
         else if (p2.bestStreak > p1.bestStreak) winner = p2Id;
 
