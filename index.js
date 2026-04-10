@@ -15,8 +15,8 @@ const app = express();
 const server = http.createServer(app);
 
 const allowedOrigins = process.env.CORS_ORIGINS 
-  ? process.env.CORS_ORIGINS.split(',') 
-  : ["https://dsa-platform-frontend-nu.vercel.app"];
+  ? process.env.CORS_ORIGINS.split(',').map(o => o.trim()) 
+  : ["https://dsa-platform-frontend-nu.vercel.app", "https://elix.it.com", "https://www.elix.it.com"];
 
 if (!process.env.JWT_SECRET && process.env.NODE_ENV === 'production') {
   console.error("❌ FATAL: JWT_SECRET environment variable is missing.");
@@ -36,14 +36,17 @@ const io = new Server(server, {
 
 global.io = io;
 
-app.use(cookieParser());
 app.use(
   cors({
     origin: function (origin, callback) {
+      // Allow requests with no origin (like mobile apps or curl)
+      if (!origin) return callback(null, true);
+      
       if (process.env.NODE_ENV === "production") {
-        if (!origin || allowedOrigins.includes(origin)) {
+        if (allowedOrigins.includes(origin)) {
           callback(null, true);
         } else {
+          console.error(`💥 CORS REJECTED: Origin "${origin}" is not in allowed list:`, allowedOrigins);
           callback(new Error("Not allowed by CORS"));
         }
       } else {
@@ -53,6 +56,7 @@ app.use(
     credentials: true,
   })
 );
+app.use(cookieParser());
 app.use(express.json());
 
 
