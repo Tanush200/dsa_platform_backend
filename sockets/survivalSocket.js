@@ -913,12 +913,12 @@ async function endDuel(roomId, winnerId, io, existingDuel = null) {
 
                 // --- DAILY STREAK LOGIC (History Based - IST Sync) ---
                 const istNow = new Date();
-                const istTodayStr = istNow.toLocaleDateString('en-CA', { timeZone: 'Asia/Kolkata' }); 
-                
+                const istTodayStr = istNow.toLocaleDateString('en-CA', { timeZone: 'Asia/Kolkata' });
+
                 const istYesterday = new Date(istNow);
                 istYesterday.setDate(istYesterday.getDate() - 1);
                 const istYesterdayStr = istYesterday.toLocaleDateString('en-CA', { timeZone: 'Asia/Kolkata' });
-                
+
                 const userHistory = prof.survivalActivityHistory || [];
                 const playedToday = userHistory.includes(istTodayStr);
                 const playedYesterday = userHistory.includes(istYesterdayStr);
@@ -928,16 +928,16 @@ async function endDuel(roomId, winnerId, io, existingDuel = null) {
                 if (!playedToday) {
                     if (playedYesterday) {
                         prof.dailyStreak = (prof.dailyStreak || 0) + 1;
-                        console.log(`[StreakDebug] Streak UP to ${prof.dailyStreak}`);
+                        // console.log(`[StreakDebug] Streak UP to ${prof.dailyStreak}`);
                     } else {
                         prof.dailyStreak = 1;
-                        console.log(`[StreakDebug] Streak RESET to 1`);
+                        // console.log(`[StreakDebug] Streak RESET to 1`);
                     }
                     prof.lastDailyStreakAt = istNow;
                     prof.survivalActivityHistory.push(istTodayStr);
                     if (prof.survivalActivityHistory.length > 365) prof.survivalActivityHistory.shift();
                 } else {
-                    console.log(`[StreakDebug] Already played Today. Streak: ${prof.dailyStreak}`);
+                    // console.log(`[StreakDebug] Already played Today. Streak: ${prof.dailyStreak}`);
                 }
 
                 prof.lastDuelAt = istNow;
