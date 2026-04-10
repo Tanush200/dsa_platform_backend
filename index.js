@@ -16,6 +16,9 @@ dotenv.config();
 const app = express();
 const server = http.createServer(app);
 
+// Trust Cloudflare proxy (essential for rate-limiting to find real IP)
+app.set('trust proxy', 1);
+
 const baseOrigins = ["https://dsa-platform-frontend-nu.vercel.app", "https://elix.it.com", "https://www.elix.it.com"];
 const allowedOrigins = process.env.CORS_ORIGINS
   ? [...new Set([...process.env.CORS_ORIGINS.split(',').map(o => o.trim()), ...baseOrigins])]
