@@ -2,6 +2,8 @@ const express = require('express');
 const mongoose = require('mongoose');
 const cors = require('cors');
 const dotenv = require('dotenv');
+const helmet = require('helmet');
+const { rateLimit } = require('express-rate-limit');
 const cookieParser = require('cookie-parser');
 const http = require('http');
 const { Server } = require('socket.io');
@@ -15,12 +17,12 @@ const app = express();
 const server = http.createServer(app);
 
 const baseOrigins = ["https://dsa-platform-frontend-nu.vercel.app", "https://elix.it.com", "https://www.elix.it.com"];
-const allowedOrigins = process.env.CORS_ORIGINS 
+const allowedOrigins = process.env.CORS_ORIGINS
   ? [...new Set([...process.env.CORS_ORIGINS.split(',').map(o => o.trim()), ...baseOrigins])]
   : baseOrigins;
 
 if (!process.env.JWT_SECRET && process.env.NODE_ENV === 'production') {
-  console.error("❌ FATAL: JWT_SECRET environment variable is missing.");
+  console.error("FATAL: JWT_SECRET environment variable is missing.");
   process.exit(1);
 }
 
@@ -37,12 +39,34 @@ const io = new Server(server, {
 
 global.io = io;
 
+
+app.use(helmet());
+
+
+const globalLimiter = rateLimit({
+  windowMs: 15 * 60 * 1000,
+  limit: 100,
+  message: { status: 'fail', message: 'Too many requests, please try again later' },
+  standardHeaders: true,
+  legacyHeaders: false,
+});
+app.use('/api/', globalLimiter);
+
+
+const authLimiter = rateLimit({
+  windowMs: 60 * 60 * 1000,
+  limit: 20,
+  message: { status: 'fail', message: 'Too many authentication attempts, please try again in an hour' },
+  standardHeaders: true,
+  legacyHeaders: false,
+});
+app.use('/api/auth', authLimiter);
+
 app.use(
   cors({
     origin: function (origin, callback) {
-      // Allow requests with no origin (like mobile apps or curl)
       if (!origin) return callback(null, true);
-      
+
       if (process.env.NODE_ENV === "production") {
         if (allowedOrigins.includes(origin)) {
           callback(null, true);
@@ -58,7 +82,7 @@ app.use(
   })
 );
 app.use(cookieParser());
-app.use(express.json());
+app.use(express.json({ limit: '10kb' }));
 
 
 
@@ -118,7 +142,7 @@ server.listen(PORT, () => {
   console.log(`Server running on port ${PORT}`);
 });
 
-// --- GLOBAL ERROR DIAGNOSTICS ---
+
 process.on('uncaughtException', (err) => {
   console.error('💥 UNCAUGHT EXCEPTION! Shutting down...', err.name, ':', err.message);
   console.error(err.stack);
