@@ -14,9 +14,10 @@ dotenv.config();
 const app = express();
 const server = http.createServer(app);
 
+const baseOrigins = ["https://dsa-platform-frontend-nu.vercel.app", "https://elix.it.com", "https://www.elix.it.com"];
 const allowedOrigins = process.env.CORS_ORIGINS 
-  ? process.env.CORS_ORIGINS.split(',').map(o => o.trim()) 
-  : ["https://dsa-platform-frontend-nu.vercel.app", "https://elix.it.com", "https://www.elix.it.com"];
+  ? [...new Set([...process.env.CORS_ORIGINS.split(',').map(o => o.trim()), ...baseOrigins])]
+  : baseOrigins;
 
 if (!process.env.JWT_SECRET && process.env.NODE_ENV === 'production') {
   console.error("❌ FATAL: JWT_SECRET environment variable is missing.");
