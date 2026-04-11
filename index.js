@@ -60,10 +60,11 @@ app.use('/api/', globalLimiter);
 
 const authLimiter = rateLimit({
   windowMs: 60 * 60 * 1000,
-  limit: 20,
+  limit: 1000, // Increased for production growth (2k users over 7 days)
   message: { status: 'fail', message: 'Too many authentication attempts, please try again in an hour' },
   standardHeaders: true,
   legacyHeaders: false,
+  skip: (req) => process.env.NODE_ENV !== 'production', // Skip rate limiting in development
 });
 app.use('/api/auth', authLimiter);
 
@@ -134,7 +135,11 @@ attachDuelSocket(io);
 const attachSurvivalSocket = require('./sockets/survivalSocket');
 attachSurvivalSocket(io);
 
+const attachFriendlySocket = require('./sockets/friendlySocket');
+attachFriendlySocket(io);
+
 require('./workers/survivalWorker');
+require('./workers/friendlyWorker');
 
 
 mongoose.connect(process.env.MONGODB_URI)
