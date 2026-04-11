@@ -118,6 +118,7 @@ function formatQ(q, index) {
     return {
         id: q._id,
         text: q.questionText,
+        codeSnippet: q.codeSnippet,
         options: q.options,
         index: index,
         total: 10
