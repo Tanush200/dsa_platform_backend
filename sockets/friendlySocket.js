@@ -35,11 +35,13 @@ async function evaluateFriendlyAnswer(roomId, userId, selectedOptionIndex, io) {
     if (p.qIndex >= room.questions.length) {
         p.finished = true;
     } else {
-        addFriendlyQuestionTimer(roomId, userId, p.qIndex, 20000);
-
-        if (userSocket) {
-            userSocket.emit('friendly:nextQuestion', formatQ(room.questions[p.qIndex], p.qIndex));
-        }
+        // Delay next question by 2 seconds so players can see the result
+        setTimeout(() => {
+            addFriendlyQuestionTimer(roomId, userId, p.qIndex, 20000);
+            if (userSocket) {
+                userSocket.emit('friendly:nextQuestion', formatQ(room.questions[p.qIndex], p.qIndex));
+            }
+        }, 2000);
     }
 
     await setJson(REDIS_FRIENDLY_PREFIX + roomId, room);
@@ -146,7 +148,8 @@ module.exports = function attachFriendlySocket(io) {
                     }
                 },
                 questions: [],
-                inviteLink: `elix.it.com/join/${shortId}`
+                inviteLink: `elix.it.com/join/${shortId}`,
+                createdAt: Date.now()
             };
 
             await setJson(REDIS_FRIENDLY_PREFIX + roomId, roomData);
@@ -159,6 +162,12 @@ module.exports = function attachFriendlySocket(io) {
             const room = await getJson(REDIS_FRIENDLY_PREFIX + roomId);
 
             if (!room) return socket.emit('friendly:error', { message: "Match not found" });
+            
+            const isExpired = Date.now() - (room.createdAt || 0) > 20 * 60 * 1000;
+            if (room.status === 'finished' || isExpired) {
+                return socket.emit('friendly:error', { message: "expired" });
+            }
+
             if (Object.keys(room.players).length >= 2) return socket.emit('friendly:error', { message: "Room full" });
 
             room.players[socket.userId] = {
