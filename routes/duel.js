@@ -227,8 +227,10 @@ router.post('/:id/run', auth, async (req, res) => {
         }
 
         let finalCodeToRun = code;
-        if (duel.problem.wrapperCode && duel.problem.wrapperCode[language]) {
+        if (duel.problem && duel.problem.wrapperCode && duel.problem.wrapperCode[language]) {
             finalCodeToRun = duel.problem.wrapperCode[language].replace('{{USER_CODE}}', code);
+        } else if (!duel.problem && !duel.isFriendly) {
+             return res.status(400).json({ message: 'Problem data missing for this duel' });
         }
         const judgeResult = await runAllTestCases({
             code: finalCodeToRun,

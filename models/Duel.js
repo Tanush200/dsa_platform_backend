@@ -30,7 +30,7 @@ const DuelSchema = new mongoose.Schema({
     problem: {
         type: mongoose.Schema.Types.ObjectId,
         ref: 'DuelProblem',
-        required: true
+        required: false
     },
 
     mode: {
@@ -74,6 +74,10 @@ const DuelSchema = new mongoose.Schema({
     roomId: {
         type: String,
         unique: true,
+    },
+    isFriendly: {
+        type: Boolean,
+        default: false
     }
 
 
