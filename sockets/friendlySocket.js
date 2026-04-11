@@ -35,7 +35,6 @@ async function evaluateFriendlyAnswer(roomId, userId, selectedOptionIndex, io) {
     if (p.qIndex >= room.questions.length) {
         p.finished = true;
     } else {
-        // Delay next question by 2 seconds so players can see the result
         setTimeout(() => {
             addFriendlyQuestionTimer(roomId, userId, p.qIndex, 20000);
             if (userSocket) {
@@ -96,7 +95,7 @@ async function endFriendlyDuel(roomId, io) {
         scores: room.scores
     });
 
-    setTimeout(() => del(REDIS_FRIENDLY_PREFIX + roomId), 5000);
+    setTimeout(() => del(REDIS_FRIENDLY_PREFIX + roomId), 60 * 60 * 1000); // Keep for 1 hour for latecomer handles
 }
 
 function serializeFriendlyPlayers(players) {
@@ -162,7 +161,7 @@ module.exports = function attachFriendlySocket(io) {
             const room = await getJson(REDIS_FRIENDLY_PREFIX + roomId);
 
             if (!room) return socket.emit('friendly:error', { message: "Match not found" });
-            
+
             const isExpired = Date.now() - (room.createdAt || 0) > 20 * 60 * 1000;
             if (room.status === 'finished' || isExpired) {
                 return socket.emit('friendly:error', { message: "expired" });
