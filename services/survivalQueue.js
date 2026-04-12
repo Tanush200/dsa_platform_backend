@@ -23,8 +23,16 @@ async function addGlobalTimer(roomId, delay) {
     );
 }
 
+async function addEndMatchJob(data) {
+    await survivalQueue.add('saveMatchResult', data, {
+        attempts: 3,
+        backoff: { type: 'exponential', delay: 1000 }
+    });
+}
+
 module.exports = { 
     addQuestionTimer, 
     addGlobalTimer, 
+    addEndMatchJob,
     survivalQueue 
 };

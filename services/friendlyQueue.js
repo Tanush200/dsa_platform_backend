@@ -16,4 +16,11 @@ async function addFriendlyQuestionTimer(roomId, userId, qIndex, delay) {
 
 }
 
-module.exports = { addFriendlyQuestionTimer, friendlyQueue };
+async function addFriendlyEndMatchJob(data) {
+    await friendlyQueue.add('saveFriendlyMatchResult', data, {
+        attempts: 3,
+        backoff: { type: 'exponential', delay: 1000 }
+    });
+}
+
+module.exports = { addFriendlyQuestionTimer, addFriendlyEndMatchJob, friendlyQueue };

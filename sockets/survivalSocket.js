@@ -539,7 +539,7 @@ const SurvivalQuestion = require('../models/SurvivalQuestion');
 const DuelProfile = require('../models/DuelProfile');
 const { v4: uuidv4 } = require('uuid');
 const { redis, getJson, setJson, del } = require('../services/redis');
-const { addQuestionTimer, addGlobalTimer } = require('../services/survivalQueue');
+const { addQuestionTimer, addGlobalTimer, addEndMatchJob } = require('../services/survivalQueue');
 
 
 const REDIS_QUEUE_KEY = 'survival:queue';
@@ -871,121 +871,14 @@ async function endDuel(roomId, winnerId, io, existingDuel = null) {
     });
 
     try {
-        const finalPlayers = Object.keys(duelData.players).map(uid => ({
-            user: duelData.players[uid].isBot ? null : uid,
-            points: duelData.players[uid].points,
-            streak: duelData.players[uid].bestStreak || 0,
-            eliminated: duelData.players[uid].eliminated
-        }));
-
-        await SurvivalDuel.findByIdAndUpdate(duelData.duelId, {
-            status: 'finished',
-            winner: winnerId,
-            players: finalPlayers,
-            finishedAt: new Date()
+        await addEndMatchJob({
+            roomId,
+            winnerId,
+            duelId: duelData.duelId,
+            players: duelData.players
         });
-
-        const playerIds = Object.keys(duelData.players);
-        const isTie = !winnerId;
-        const profiles = {};
-
-        for (const uid of playerIds) {
-            if (duelData.players[uid].isBot) continue;
-            let pProfile = await DuelProfile.findOne({ user: uid });
-            if (!pProfile) { pProfile = new DuelProfile({ user: uid }); await pProfile.save(); }
-            profiles[uid] = pProfile;
-        }
-
-        const K = 32;
-        if (playerIds.length === 2) {
-            const [aId, bId] = playerIds;
-
-            for (const uid of [aId, bId]) {
-                const p = duelData.players[uid];
-                if (p.isBot) continue;
-
-                const oppId = uid === aId ? bId : aId;
-                const opp = duelData.players[oppId];
-
-                const prof = profiles[uid];
-                const elo = prof.survivalElo || 1000;
-                const oppElo = opp.isBot ? elo : (profiles[oppId]?.survivalElo || 1000);
-
-                const expected = 1 / (1 + Math.pow(10, (oppElo - elo) / 400));
-                let score = 0.5;
-                if (!isTie && String(winnerId) === String(uid)) score = 1;
-                else if (!isTie && String(winnerId) === String(oppId)) score = 0;
-
-                const newElo = Math.max(100, Math.round(elo + K * (score - expected)));
-                const delta = newElo - elo;
-
-                prof.survivalElo = newElo;
-                prof.survivalTotalDuels = (prof.survivalTotalDuels || 0) + 1;
-                if (score === 1) prof.survivalWins = (prof.survivalWins || 0) + 1;
-                else if (score === 0) prof.survivalLosses = (prof.survivalLosses || 0) + 1;
-                prof.survivalBestStreak = Math.max(prof.survivalBestStreak || 0, p.bestStreak);
-
-                // if (p.questions && p.qIndex > 0) {
-                //     const seenIds = p.questions.slice(0, p.qIndex + 1).map(q => q._id.toString());
-                //     const currentSeen = (prof.survivalSeenQuestions || []).map(id => id.toString());
-                //     const uniqueSeen = [...new Set([...currentSeen, ...seenIds])];
-                //     prof.survivalSeenQuestions = uniqueSeen.slice(-800);
-                // }
-
-                if (p.questions && p.qIndex > 0) {
-                    const newSeenIds = p.questions.slice(0, p.qIndex + 1).map(q => q._id.toString());
-
-                    const currentSeen = (prof.survivalSeenQuestions || []).map(id => id.toString());
-
-                    const filteredHistory = currentSeen.filter(id => !newSeenIds.includes(id));
-                    const uniqueSeen = [...filteredHistory, ...newSeenIds];
-
-                    prof.survivalSeenQuestions = uniqueSeen.slice(-800);
-                }
-
-                // --- DAILY STREAK LOGIC (History Based - IST Sync) ---
-                const istNow = new Date();
-                const istTodayStr = istNow.toLocaleDateString('en-CA', { timeZone: 'Asia/Kolkata' });
-
-                const istYesterday = new Date(istNow);
-                istYesterday.setDate(istYesterday.getDate() - 1);
-                const istYesterdayStr = istYesterday.toLocaleDateString('en-CA', { timeZone: 'Asia/Kolkata' });
-
-                const userHistory = prof.survivalActivityHistory || [];
-                const playedToday = userHistory.includes(istTodayStr);
-                const playedYesterday = userHistory.includes(istYesterdayStr);
-
-                // console.log(`[StreakDebug] User: ${uid}, Today: ${istTodayStr}, History: ${userHistory.slice(-5)}`);
-
-                if (!playedToday) {
-                    if (playedYesterday) {
-                        prof.dailyStreak = (prof.dailyStreak || 0) + 1;
-                        // console.log(`[StreakDebug] Streak UP to ${prof.dailyStreak}`);
-                    } else {
-                        prof.dailyStreak = 1;
-                        // console.log(`[StreakDebug] Streak RESET to 1`);
-                    }
-                    prof.lastDailyStreakAt = istNow;
-                    prof.survivalActivityHistory.push(istTodayStr);
-                    if (prof.survivalActivityHistory.length > 365) prof.survivalActivityHistory.shift();
-                } else {
-                    // console.log(`[StreakDebug] Already played Today. Streak: ${prof.dailyStreak}`);
-                }
-
-                prof.lastDuelAt = istNow;
-                await prof.save();
-
-                const sock = io.sockets.sockets.get(p.socketId);
-                if (sock) sock.emit('survival:eloUpdate', {
-                    newElo,
-                    delta,
-                    rank: prof.survivalRank,
-                    dailyStreak: prof.dailyStreak
-                });
-            }
-        }
     } catch (e) {
-        console.error('Error saving duel', e);
+        console.error('Error enqueuing match result', e);
     }
     await del(REDIS_DUEL_PREFIX + roomId);
 }

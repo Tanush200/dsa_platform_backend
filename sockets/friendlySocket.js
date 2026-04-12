@@ -2,7 +2,7 @@ const mongoose = require('mongoose');
 const SurvivalQuestion = require('../models/SurvivalQuestion');
 const Duel = require('../models/Duel');
 const { redis, getJson, setJson, del } = require('../services/redis');
-const { addFriendlyQuestionTimer } = require('../services/friendlyQueue');
+const { addFriendlyQuestionTimer, addFriendlyEndMatchJob } = require('../services/friendlyQueue');
 
 const REDIS_FRIENDLY_PREFIX = 'friendly:duel:';
 
@@ -76,18 +76,15 @@ async function endFriendlyDuel(roomId, io) {
     else if (scores[1].score > scores[0].score) winnerId = scores[1].id;
 
     try {
-        const duel = new Duel({
-            players: pIds,
-            status: 'finished',
-            winner: winnerId,
+        await addFriendlyEndMatchJob({
+            roomId,
+            winnerId,
             mode: room.mode,
-            isFriendly: true,
-            finishedAt: new Date(),
-            roomId: room.shortId
+            shortId: room.shortId,
+            players: room.players
         });
-        await duel.save();
     } catch (err) {
-        console.error('[Friendly] DB Save failed:', err.message);
+        console.error('[Friendly] Job Enqueue failed:', err.message);
     }
 
     io.to(roomId).emit('friendly:ended', {
