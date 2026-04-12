@@ -33,20 +33,23 @@ router.post('/register', async (req, res) => {
       password: hashedPassword,
       role: 'student',
       verificationToken,
-      isVerified: false
+      isVerified: true
     });
 
     await user.save();
 
+    // Verification emails disabled for now
+    /*
     try {
       await sendVerificationEmail(email, verificationToken, username);
     } catch (emailErr) {
       console.error("Failed to send verification email:", emailErr);
     }
+    */
 
     res.json({
-      message: 'Registration successful! Please check your email to verify your account.',
-      user: { id: user._id, username, email, isVerified: false }
+      message: 'Registration successful! You can now log in.',
+      user: { id: user._id, username, email, isVerified: true }
     });
   } catch (error) {
     console.error("Registration error:", error);
@@ -81,9 +84,11 @@ router.post('/login', async (req, res) => {
 
     if (!user) return res.status(400).json({ message: 'Invalid credentials' });
 
+    /*
     if (!user.isVerified) {
        return res.status(401).json({ message: 'Please verify your email before logging in.' });
     }
+    */
 
     const validPassword = await bcrypt.compare(password, user.password);
     if (!validPassword) return res.status(400).json({ message: 'Invalid credentials' });
