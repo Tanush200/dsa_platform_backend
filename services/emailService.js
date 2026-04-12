@@ -22,7 +22,7 @@ const sendVerificationEmail = async (toEmail, token, username) => {
     Source: SENDER_EMAIL,
     Destination: { ToAddresses: [toEmail] },
     Message: {
-      Subject: { Data: `Verify your ${APP_NAME} Account 🛡️`, Charset: "UTF-8" },
+      Subject: { Data: `Verify your ${APP_NAME} Account`, Charset: "UTF-8" },
       Body: {
         Html: {
           Data: `
@@ -50,6 +50,10 @@ const sendVerificationEmail = async (toEmail, token, username) => {
           `,
           Charset: "UTF-8",
         },
+        Text: {
+          Data: `Welcome to ${APP_NAME}, ${username}!\n\nPlease verify your email address by following this link: ${verificationLink}\n\nIf you didn't create an account, you can safely ignore this email.`,
+          Charset: "UTF-8",
+        },
       },
     },
   };
@@ -57,6 +61,7 @@ const sendVerificationEmail = async (toEmail, token, username) => {
   try {
     const command = new SendEmailCommand(params);
     const result = await sesClient.send(command);
+    console.log("SES Email Sent Successfully. MessageId:", result.MessageId);
     return result;
   } catch (error) {
     console.error("SES Verification Email Error:", error);
@@ -74,7 +79,7 @@ const sendPasswordResetEmail = async (toEmail, token, username) => {
     Source: SENDER_EMAIL,
     Destination: { ToAddresses: [toEmail] },
     Message: {
-      Subject: { Data: `Reset your ${APP_NAME} Password 🔑`, Charset: "UTF-8" },
+      Subject: { Data: `Reset your ${APP_NAME} Password`, Charset: "UTF-8" },
       Body: {
         Html: {
           Data: `
@@ -100,6 +105,10 @@ const sendPasswordResetEmail = async (toEmail, token, username) => {
               </p>
             </div>
           `,
+          Charset: "UTF-8",
+        },
+        Text: {
+          Data: `Hi ${username},\n\nWe received a request to reset your password. Click the following link to choose a new password: ${resetLink}\n\nIf you didn't request this, you can safely ignore this email.`,
           Charset: "UTF-8",
         },
       },
