@@ -20,7 +20,8 @@ const DuelProfileSchema = new mongoose.Schema({
     },
     wins: {
         type: Number,
-        default: 0
+        default: 0,
+        index: true
     },
     losses: {
         type: Number,
@@ -40,7 +41,8 @@ const DuelProfileSchema = new mongoose.Schema({
     },
     totalDuels: {
         type: Number,
-        default: 0
+        default: 0,
+        index: true
     },
     lastDailyStreakAt: {
         type: Date,
@@ -74,7 +76,8 @@ const DuelProfileSchema = new mongoose.Schema({
     },
     survivalTotalDuels: {
         type: Number,
-        default: 0
+        default: 0,
+        index: true
     },
     survivalLosses: {
         type: Number,
@@ -104,7 +107,7 @@ DuelProfileSchema.pre('save', async function () {
     else if (sElo >= 1600) this.survivalRank = 'Champion';
     else if (sElo >= 1300) this.survivalRank = 'Warrior';
     else if (sElo >= 1100) this.survivalRank = 'Fighter';
-    else if (sElo >= 900)  this.survivalRank = 'Survivor';
+    else if (sElo >= 900) this.survivalRank = 'Survivor';
     else this.survivalRank = 'Recruit';
 });
 

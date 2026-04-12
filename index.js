@@ -47,7 +47,13 @@ const io = new Server(server, {
 global.io = io;
 
 
-const botPatterns = [/\.php$/, /\.env$/, /\.sql$/, /\.aspx$/, /^\/actuator/, /^\/wp-/, /^\/backup/, /^\/_profiler/, /^\/config/, /^\/owa/, /^\/auth/];
+const botPatterns = [
+  /\.php$/, /\.env$/, /\.sql$/, /\.aspx$/, /^\/actuator/,
+  /^\/wp-/, /^\/backup/, /^\/_profiler/, /^\/config/,
+  /^\/owa/, /^\/auth/, /^\/admin/, /^\/web-console/,
+  /^\/invoker/, /^\/jmx-console/
+];
+
 
 app.use(morgan(':method :url :status :res[content-length] - :response-time ms', {
   skip: (req) => botPatterns.some(p => p.test(req.path))
@@ -93,6 +99,7 @@ app.use(
       }
     },
     credentials: true,
+    maxAge: 86400,
   })
 );
 app.use(cookieParser());
@@ -170,7 +177,11 @@ require('./workers/survivalWorker');
 require('./workers/friendlyWorker');
 
 
-mongoose.connect(process.env.MONGODB_URI)
+mongoose.connect(process.env.MONGODB_URI, {
+  maxPoolSize: 10,
+  serverSelectionTimeoutMS: 5000,
+  socketTimeoutMS: 45000,
+})
   .then(() => console.log('MongoDB connected'))
   .catch(err => console.error('MongoDB connection error:', err));
 

@@ -92,12 +92,22 @@ router.get('/duel/:id', auth, async (req, res) => {
 
 router.get('/leaderboard', [auth, setCache(300)], async (req, res) => {
     try {
+        const page = parseInt(req.query.page) || 1;
+        const limit = parseInt(req.query.limit) || 20;
+        const skip = (page - 1) * limit;
+
+        const total = await DuelProfile.countDocuments({ survivalTotalDuels: { $gt: 0 } });
         const top = await DuelProfile.find({ survivalTotalDuels: { $gt: 0 } })
             .sort({ survivalElo: -1 })
-            .limit(50)
+            .skip(skip)
+            .limit(limit)
             .populate('user', 'nickname')
             .lean();
-        res.json(top);
+        res.json({
+            leaderboard: top,
+            total,
+            hasMore: total > skip + top.length
+        });
     } catch (err) {
         console.error(err);
         return res.status(500).json({ message: 'Server error' });
@@ -108,7 +118,7 @@ router.get('/leaderboard', [auth, setCache(300)], async (req, res) => {
 router.get('/my-profile', auth, async (req, res) => {
     try {
         let profile = await DuelProfile.findOne({ user: req.user.id })
-            .select('-survivalSeenQuestions') // Exclude giant array to save bandwidth
+            .select('-survivalSeenQuestions')
             .lean();
         if (!profile) return res.json({ survivalElo: 1000, survivalRank: 'Recruit', survivalWins: 0, survivalLosses: 0, survivalBestStreak: 0, survivalTotalDuels: 0 });
         res.json(profile);

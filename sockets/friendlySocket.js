@@ -40,7 +40,7 @@ async function evaluateFriendlyAnswer(roomId, userId, selectedOptionIndex, io) {
             if (userSocket) {
                 userSocket.emit('friendly:nextQuestion', formatQ(room.questions[p.qIndex], p.qIndex));
             }
-        }, 2000);
+        }, 1000);
     }
 
     await setJson(REDIS_FRIENDLY_PREFIX + roomId, room);
@@ -95,7 +95,7 @@ async function endFriendlyDuel(roomId, io) {
         scores: room.scores
     });
 
-    setTimeout(() => del(REDIS_FRIENDLY_PREFIX + roomId), 60 * 60 * 1000); // Keep for 1 hour for latecomer handles
+    setTimeout(() => del(REDIS_FRIENDLY_PREFIX + roomId), 10 * 60 * 1000);
 }
 
 function serializeFriendlyPlayers(players) {
