@@ -129,9 +129,13 @@ module.exports = function attachFriendlySocket(io) {
     io.on('connection', (socket) => {
 
         socket.on('friendly:create', async ({ mode }) => {
-            const shortId = Math.random().toString(36).substr(2, 6);
+            const shortId = Math.random().toString(36).substr(2, 6).toUpperCase();
             const roomId = `friendly_${shortId}`;
 
+            const baseUrl = process.env.FRONTEND_URL || 'https://elix.it.com';
+            const inviteLink = `${baseUrl}/join/${shortId}`;
+
+            const shareMessage = `I invite you to a 1v1 Friendly MCQ Duel on Elix. \n\nRoom Code: ${shortId} \nUplink: ${inviteLink}`;
             const roomData = {
                 id: roomId,
                 shortId: shortId,
@@ -148,13 +152,19 @@ module.exports = function attachFriendlySocket(io) {
                     }
                 },
                 questions: [],
-                inviteLink: `elix.it.com/join/${shortId}`,
+                inviteLink,
+                shareMessage,
                 createdAt: Date.now()
             };
-
             await setJson(REDIS_FRIENDLY_PREFIX + roomId, roomData);
             socket.join(roomId);
-            socket.emit('friendly:roomCreated', { roomId, inviteLink: roomData.inviteLink, shortId });
+
+            socket.emit('friendly:roomCreated', {
+                roomId,
+                inviteLink,
+                shortId,
+                shareMessage
+            });
         });
 
         socket.on('friendly:join', async ({ shortId }) => {
