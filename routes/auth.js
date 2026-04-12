@@ -120,9 +120,21 @@ router.post('/logout', (req, res) => {
 
 const { auth } = require('../middleware/auth');
 router.get('/socket-token', auth, (req, res) => {
-  const token = req.cookies?.token;
-  if (!token) return res.status(401).json({ message: 'No token found' });
-  res.json({ token });
+  try {
+    const socketToken = jwt.sign(
+      {
+        id: req.user.id,
+        username: req.user.username,
+        type: 'socket_admission'
+      },
+      process.env.JWT_SECRET || 'superDsaSecretKey2026!',
+      { expiresIn: '5m' }
+    );
+
+    res.json({ token: socketToken });
+  } catch (err) {
+    res.status(500).json({ message: 'Failed to generate socket token' });
+  }
 });
 
 module.exports = router;

@@ -84,6 +84,11 @@ module.exports = function attachDuelSocket(io) {
             if (!token) return next(new Error('Authentication required'));
 
             const decoded = jwt.verify(token, process.env.JWT_SECRET || 'superDsaSecretKey2026!');
+
+            if (decoded.type !== 'socket_admission') {
+                return next(new Error('Invalid token type for socket access'));
+            }
+
             socket.userId = decoded.id;
             socket.username = decoded.username;
             next();
