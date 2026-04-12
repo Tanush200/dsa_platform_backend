@@ -9,7 +9,8 @@ const User = require('../models/User');
 const bcrypt = require('bcryptjs');
 const jwt = require('jsonwebtoken');
 const { v4: uuidv4 } = require('uuid');
-const { sendVerificationEmail } = require('../services/emailService');
+const { sendVerificationEmail, sendPasswordResetEmail } = require('../services/emailService');
+const crypto = require('crypto');
 
 router.post('/register', async (req, res) => {
   try {
@@ -32,7 +33,7 @@ router.post('/register', async (req, res) => {
       password: hashedPassword,
       role: 'student',
       verificationToken,
-      isVerified: true // Set to true by default while SES is disabled
+      isVerified: false
     });
 
     await user.save();
@@ -44,8 +45,8 @@ router.post('/register', async (req, res) => {
     }
 
     res.json({
-      message: 'Registration successful! You can now log in.',
-      user: { id: user._id, username, email, isVerified: true }
+      message: 'Registration successful! Please check your email to verify your account.',
+      user: { id: user._id, username, email, isVerified: false }
     });
   } catch (error) {
     console.error("Registration error:", error);
@@ -80,10 +81,9 @@ router.post('/login', async (req, res) => {
 
     if (!user) return res.status(400).json({ message: 'Invalid credentials' });
 
-    // Temporarily disabled for production launch without SES 
-    // if (!user.isVerified) {
-    //   return res.status(401).json({ message: 'Please verify your email before logging in.' });
-    // }
+    if (!user.isVerified) {
+       return res.status(401).json({ message: 'Please verify your email before logging in.' });
+    }
 
     const validPassword = await bcrypt.compare(password, user.password);
     if (!validPassword) return res.status(400).json({ message: 'Invalid credentials' });
@@ -134,6 +134,53 @@ router.get('/socket-token', auth, (req, res) => {
     res.json({ token: socketToken });
   } catch (err) {
     res.status(500).json({ message: 'Failed to generate socket token' });
+  }
+});
+
+router.post('/forgot-password', async (req, res) => {
+  try {
+    const { email } = req.body;
+    const user = await User.findOne({ email });
+    if (!user) return res.status(404).json({ message: 'User with this email does not exist' });
+
+    const resetToken = crypto.randomBytes(32).toString('hex');
+    user.resetPasswordToken = resetToken;
+    user.resetPasswordExpires = Date.now() + 3600000; // 1 hour
+    await user.save();
+
+    await sendPasswordResetEmail(email, resetToken, user.username);
+
+    res.json({ message: 'Password reset link sent to your email.' });
+  } catch (error) {
+    console.error("Forgot password error:", error);
+    res.status(500).json({ error: 'Internal server error' });
+  }
+});
+
+router.post('/reset-password/:token', async (req, res) => {
+  try {
+    const { token } = req.params;
+    const { password } = req.body;
+
+    const user = await User.findOne({
+      resetPasswordToken: token,
+      resetPasswordExpires: { $gt: Date.now() }
+    });
+
+    if (!user) {
+      return res.status(400).json({ message: 'Invalid or expired reset token' });
+    }
+
+    const salt = await bcrypt.genSalt(10);
+    user.password = await bcrypt.hash(password, salt);
+    user.resetPasswordToken = null;
+    user.resetPasswordExpires = null;
+    await user.save();
+
+    res.json({ message: 'Password reset successful! You can now log in with your new password.' });
+  } catch (error) {
+    console.error("Reset password error:", error);
+    res.status(500).json({ error: 'Internal server error' });
   }
 });
 
