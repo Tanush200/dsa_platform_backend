@@ -168,24 +168,43 @@ module.exports = function attachFriendlySocket(io) {
                 return socket.emit('friendly:error', { message: "expired" });
             }
 
-            if (Object.keys(room.players).length >= 2) return socket.emit('friendly:error', { message: "Room full" });
+            const isExisting = room.players[socket.userId];
 
-            room.players[socket.userId] = {
-                username: socket.username,
-                socketId: socket.id,
-                score: 0,
-                qIndex: 0,
-                ready: false,
-                finished: false
-            };
+            if (!isExisting && Object.keys(room.players).length >= 2) {
+                return socket.emit('friendly:error', { message: "Room full" });
+            }
+
+            if (isExisting) {
+                room.players[socket.userId].socketId = socket.id;
+            } else {
+                room.players[socket.userId] = {
+                    username: socket.username,
+                    socketId: socket.id,
+                    score: 0,
+                    qIndex: 0,
+                    ready: false,
+                    finished: false
+                };
+            }
 
             await setJson(REDIS_FRIENDLY_PREFIX + roomId, room);
             socket.join(roomId);
 
-            io.to(roomId).emit('friendly:playerJoined', {
+            io.to(roomId).emit('friendly:stateUpdate', {
                 players: serializeFriendlyPlayers(room.players),
                 status: room.status
             });
+
+            if (isExisting && room.status === 'active') {
+                const p = room.players[socket.userId];
+                if (!p.finished && !p.eliminated) {
+                    socket.emit('friendly:started', {
+                        totalQuestions: 10,
+                        currentQuestion: formatQ(room.questions[p.qIndex], p.qIndex),
+                        rejoin: true
+                    });
+                }
+            }
         });
 
         socket.on('friendly:ready', async ({ roomId }) => {
@@ -222,9 +241,19 @@ module.exports = function attachFriendlySocket(io) {
         });
 
         socket.on('disconnect', async () => {
-            // Find if user was in a friendly room
-            // In a better implementation, we'd have a user->room map in Redis
-            // But here we'll rely on the socket having joined the room
+            const rooms = Array.from(socket.rooms);
+            for (const rId of rooms) {
+                if (rId.startsWith('friendly_')) {
+                    const room = await getJson(REDIS_FRIENDLY_PREFIX + rId);
+                    if (room && room.players[socket.userId]) {
+                        room.players[socket.userId].socketId = null;
+                        await setJson(REDIS_FRIENDLY_PREFIX + rId, room);
+                        io.to(rId).emit('friendly:stateUpdate', {
+                            players: serializeFriendlyPlayers(room.players)
+                        });
+                    }
+                }
+            }
         });
     });
 };
