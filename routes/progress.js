@@ -37,9 +37,12 @@ router.post('/', auth, async (req, res) => {
 
       if (isNewSolve) {
         const user = await User.findById(req.user.id);
+        if (!user) return res.status(404).json({ message: 'User not found' });
+
+
+        if (!user.solveHistory) user.solveHistory = [];
 
         const today = new Date();
-
         const year = today.getFullYear();
         const month = String(today.getMonth() + 1).padStart(2, '0');
         const dayStr = String(today.getDate()).padStart(2, '0');
@@ -51,17 +54,17 @@ router.post('/', auth, async (req, res) => {
           const lastSolved = new Date(user.lastSolvedDate);
           lastSolved.setHours(0, 0, 0, 0);
 
-          const diffTime = Math.abs(today - lastSolved);
-
+          const diffTime = today.getTime() - lastSolved.getTime();
           const diffDays = Math.round(diffTime / (1000 * 60 * 60 * 24));
 
           if (diffDays === 1) {
             user.currentStreak += 1;
             user.lastSolvedDate = today;
-
           } else if (diffDays > 1) {
             user.currentStreak = 1;
             user.lastSolvedDate = today;
+          } else if (diffDays === 0) {
+            // Already solved today, keep current streak and date
           }
         } else {
           user.currentStreak = 1;
@@ -79,6 +82,8 @@ router.post('/', auth, async (req, res) => {
           user.solveHistory.push({ date: dateString, count: 1 });
         }
 
+        // Force mark modified if nested field
+        user.markModified('solveHistory');
         await user.save();
       }
 

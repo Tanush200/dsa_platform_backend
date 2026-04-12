@@ -17,6 +17,15 @@ router.get('/me', auth, async (req, res) => {
   }
 });
 
+router.get('/solve-history', auth, async (req, res) => {
+  try {
+    const user = await User.findById(req.user.id).select('solveHistory currentStreak maxStreak lastSolvedDate');
+    res.json(user);
+  } catch (err) {
+    res.status(500).json({ message: 'Server error' });
+  }
+});
+
 router.put('/timeline', auth, async (req, res) => {
   try {
     const { durationDays } = req.body;
