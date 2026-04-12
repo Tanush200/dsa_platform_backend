@@ -540,6 +540,7 @@ const DuelProfile = require('../models/DuelProfile');
 const { v4: uuidv4 } = require('uuid');
 const { redis, getJson, setJson, del } = require('../services/redis');
 const { addQuestionTimer, addGlobalTimer, addEndMatchJob } = require('../services/survivalQueue');
+const { recordSolve } = require('../services/userActivityService');
 
 
 const REDIS_QUEUE_KEY = 'survival:queue';
@@ -780,6 +781,10 @@ async function evaluateAnswer(roomId, userId, selectedOptionIndex, io) {
             p.points += q.points;
             p.streak += 1;
             p.bestStreak = Math.max(p.bestStreak || 0, p.streak);
+
+            if (!p.isBot) {
+                await recordSolve(userId);
+            }
 
             const playerIds = Object.keys(duel.players);
             const oppId = playerIds.find(id => id !== userId);

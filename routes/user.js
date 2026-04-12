@@ -20,6 +20,26 @@ router.get('/me', auth, async (req, res) => {
 router.get('/solve-history', auth, async (req, res) => {
   try {
     const user = await User.findById(req.user.id).select('solveHistory currentStreak maxStreak lastSolvedDate');
+    
+    if (user && user.lastSolvedDate && user.currentStreak > 0) {
+      const istNow = new Date();
+      const istTodayStr = istNow.toLocaleDateString('en-CA', { timeZone: 'Asia/Kolkata' });
+      
+      const lastSolved = new Date(user.lastSolvedDate);
+      const lastSolvedStr = lastSolved.toLocaleDateString('en-CA', { timeZone: 'Asia/Kolkata' });
+      
+      if (istTodayStr !== lastSolvedStr) {
+        const yesterday = new Date(istNow);
+        yesterday.setDate(yesterday.getDate() - 1);
+        const istYesterdayStr = yesterday.toLocaleDateString('en-CA', { timeZone: 'Asia/Kolkata' });
+        
+        if (lastSolvedStr !== istYesterdayStr) {
+          user.currentStreak = 0;
+          await user.save();
+        }
+      }
+    }
+
     res.json(user);
   } catch (err) {
     res.status(500).json({ message: 'Server error' });

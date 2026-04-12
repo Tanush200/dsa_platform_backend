@@ -5,6 +5,7 @@ const { auth, admin } = require('../middleware/auth');
 const Duel = require('../models/Duel');
 const DuelProblem = require('../models/DuelProblem');
 const DuelProfile = require('../models/DuelProfile');
+const { recordSolve } = require('../services/userActivityService');
 
 const { v4: uuidv4 } = require('uuid');
 const { runAllTestCases } = require('../services/judge0');
@@ -283,6 +284,7 @@ router.post('/:id/submit', auth, async (req, res) => {
         }
 
         if (req.body.passed) {
+            await recordSolve(playerId);
             if (duel.mode === 'optimization') {
                 const bothPassed = duel.submissions.filter(s => s.passed).length === 2;
                 if (bothPassed) {
