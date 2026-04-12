@@ -47,7 +47,11 @@ const io = new Server(server, {
 global.io = io;
 
 
-app.use(morgan(':method :url :status :res[content-length] - :response-time ms'));
+const botPatterns = [/\.php$/, /\.env$/, /\.sql$/, /\.aspx$/, /^\/actuator/, /^\/wp-/, /^\/backup/, /^\/_profiler/, /^\/config/, /^\/owa/, /^\/auth/];
+
+app.use(morgan(':method :url :status :res[content-length] - :response-time ms', {
+  skip: (req) => botPatterns.some(p => p.test(req.path))
+}));
 app.use(compression());
 app.use(helmet());
 
@@ -121,7 +125,10 @@ app.use('/api/survival', require('./routes/survival'));
 
 
 app.all('/*path', (req, res) => {
-  console.log(`🔍 404 Attempted access to non-existent route: ${req.originalUrl}`);
+  const isBot = botPatterns.some(p => p.test(req.path));
+  if (!isBot) {
+    console.log(`🔍 404 Attempted access to non-existent route: ${req.originalUrl}`);
+  }
   res.status(404).json({
     status: 'fail',
     message: `Can't find ${req.originalUrl} on this server!`
