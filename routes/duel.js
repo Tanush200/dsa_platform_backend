@@ -34,7 +34,7 @@ router.get('/leaderboard', async (req, res) => {
         const top = await DuelProfile.find()
             .sort({ elo: -1 })
             .limit(50)
-            .populate('user', 'username');
+            .populate('user', 'nickname');
         return res.json(top);
     } catch (err) {
         console.log(err);
@@ -70,8 +70,8 @@ router.get('/history', auth, async (req, res) => {
         const duels = await Duel.find({ players: req.user.id, status: 'finished' })
             .sort({ finishedAt: -1 })
             .limit(20)
-            .populate('players', 'username')
-            .populate('winner', 'username')
+            .populate('players', 'nickname') // Hide emails
+            .populate('winner', 'nickname')
             .populate('problem', 'title difficulty')
             .lean();
         res.json(duels);
@@ -230,7 +230,7 @@ router.post('/:id/run', auth, async (req, res) => {
         if (duel.problem && duel.problem.wrapperCode && duel.problem.wrapperCode[language]) {
             finalCodeToRun = duel.problem.wrapperCode[language].replace('{{USER_CODE}}', code);
         } else if (!duel.problem && !duel.isFriendly) {
-             return res.status(400).json({ message: 'Problem data missing for this duel' });
+            return res.status(400).json({ message: 'Problem data missing for this duel' });
         }
         const judgeResult = await runAllTestCases({
             code: finalCodeToRun,

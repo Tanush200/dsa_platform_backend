@@ -94,7 +94,7 @@ router.get('/leaderboard', auth, async (req, res) => {
         const top = await DuelProfile.find({ survivalTotalDuels: { $gt: 0 } })
             .sort({ survivalElo: -1 })
             .limit(50)
-            .populate('user', 'username nickname')
+            .populate('user', 'nickname') // Only send nickname, hide email
             .lean();
         res.json(top);
     } catch (err) {
@@ -106,7 +106,9 @@ router.get('/leaderboard', auth, async (req, res) => {
 
 router.get('/my-profile', auth, async (req, res) => {
     try {
-        let profile = await DuelProfile.findOne({ user: req.user.id }).lean();
+        let profile = await DuelProfile.findOne({ user: req.user.id })
+            .select('-survivalSeenQuestions') // Exclude giant array to save bandwidth
+            .lean();
         if (!profile) return res.json({ survivalElo: 1000, survivalRank: 'Recruit', survivalWins: 0, survivalLosses: 0, survivalBestStreak: 0, survivalTotalDuels: 0 });
         res.json(profile);
     } catch (err) {
