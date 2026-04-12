@@ -2,8 +2,9 @@ const express = require('express');
 const router = express.Router();
 const Problem = require('../models/Problem');
 const { auth, admin } = require('../middleware/auth');
+const { setCache } = require('../middleware/cache');
 
-router.get('/', auth, async (req, res) => {
+router.get('/', [auth, setCache(3600)], async (req, res) => {
   try {
     const problems = await Problem.find().sort({ order: 1, createdAt: 1 }).lean();
     res.json(problems);

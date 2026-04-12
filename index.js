@@ -9,6 +9,8 @@ const http = require('http');
 const { Server } = require('socket.io');
 const { createAdapter } = require('@socket.io/redis-adapter');
 const Redis = require('ioredis');
+const morgan = require('morgan');
+const compression = require('compression');
 
 
 dotenv.config();
@@ -45,6 +47,8 @@ const io = new Server(server, {
 global.io = io;
 
 
+app.use(morgan(':method :url :status :res[content-length] - :response-time ms'));
+app.use(compression());
 app.use(helmet());
 
 
@@ -60,11 +64,11 @@ app.use('/api/', globalLimiter);
 
 const authLimiter = rateLimit({
   windowMs: 60 * 60 * 1000,
-  limit: 1000, // Increased for production growth (2k users over 7 days)
+  limit: 1000,
   message: { status: 'fail', message: 'Too many authentication attempts, please try again in an hour' },
   standardHeaders: true,
   legacyHeaders: false,
-  skip: (req) => process.env.NODE_ENV !== 'production', // Skip rate limiting in development
+  skip: (req) => process.env.NODE_ENV !== 'production',
 });
 app.use('/api/auth', authLimiter);
 
@@ -78,7 +82,7 @@ app.use(
           callback(null, true);
         } else {
           console.error(`💥 CORS REJECTED: Origin "${origin}" is not in allowed list:`, allowedOrigins);
-          callback(new Error("Not allowed by CORS"));
+          callback(new Error(`CORS policy: This origin '${origin}' is not allowed.`));
         }
       } else {
         callback(null, true);
@@ -100,6 +104,10 @@ app.get('/api/health', (req, res) => {
   });
 });
 
+app.get('/favicon.ico', (req, res) => res.status(204).end());
+app.get('/robots.txt', (req, res) => res.type('text/plain').send("User-agent: *\nAllow: /"));
+app.get('/', (req, res) => res.status(200).send("Elite Syntax API - Secure & Healthy"));
+
 
 
 app.use('/api/auth', require('./routes/auth'));
@@ -110,6 +118,15 @@ app.use('/api/settings', require('./routes/settings'));
 app.use('/api/interview', require('./routes/interview'));
 app.use('/api/duel', require('./routes/duel'));
 app.use('/api/survival', require('./routes/survival'));
+
+
+app.all('/*path', (req, res) => {
+  console.log(`🔍 404 Attempted access to non-existent route: ${req.originalUrl}`);
+  res.status(404).json({
+    status: 'fail',
+    message: `Can't find ${req.originalUrl} on this server!`
+  });
+});
 
 
 try {

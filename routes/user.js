@@ -1,5 +1,10 @@
 const express = require('express');
 const router = express.Router();
+const { noCache } = require('../middleware/cache');
+
+
+router.use(noCache);
+
 const User = require('../models/User');
 const { auth } = require('../middleware/auth');
 
@@ -21,7 +26,7 @@ router.put('/timeline', auth, async (req, res) => {
         targetDurationDays: durationDays,
         startDate: new Date()
       },
-      { new: true }
+      { returnDocument: 'after' }
     ).select('-password');
 
     res.json(user);
@@ -40,7 +45,7 @@ router.put('/nickname', auth, async (req, res) => {
     const user = await User.findByIdAndUpdate(
       req.user.id,
       { nickname },
-      { new: true }
+      { returnDocument: 'after' }
     ).select('-password');
 
     res.json(user);
@@ -65,21 +70,21 @@ router.put('/email', auth, async (req, res) => {
     const verificationToken = require('uuid').v4();
     const user = await User.findByIdAndUpdate(
       req.user.id,
-      { 
-        email, 
-        isVerified: false, 
-        verificationToken 
+      {
+        email,
+        isVerified: false,
+        verificationToken
       },
-      { new: true }
+      { returnDocument: 'after' }
     ).select('-password');
 
     // Send new verification email
     const { sendVerificationEmail } = require('../services/emailService');
     await sendVerificationEmail(email, verificationToken, user.username);
 
-    res.json({ 
+    res.json({
       message: 'Email updated! Please verify your new email address.',
-      user 
+      user
     });
   } catch (err) {
     console.error("Email update error:", err);
