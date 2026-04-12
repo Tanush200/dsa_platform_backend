@@ -24,7 +24,8 @@ const SubmissionSchema = new mongoose.Schema({
 const DuelSchema = new mongoose.Schema({
     players: [{
         type: mongoose.Schema.Types.ObjectId,
-        ref: 'User'
+        ref: 'User',
+        index: true
     }],
 
     problem: {
@@ -42,7 +43,8 @@ const DuelSchema = new mongoose.Schema({
     status: {
         type: String,
         enum: ['waiting', 'active', 'finished', 'cancelled'],
-        default: 'waiting'
+        default: 'waiting',
+        index: true
     },
 
     startedAt: {

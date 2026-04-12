@@ -8,7 +8,7 @@ const SurvivalDuelSchema = new mongoose.Schema({
         streak: { type: Number, default: 0 },
         eliminated: { type: Boolean, default: false }
     }],
-    status: { type: String, enum: ['waiting', 'active', 'finished'], default: 'waiting' },
+    status: { type: String, enum: ['waiting', 'active', 'finished'], default: 'waiting', index: true },
     winner: { type: mongoose.Schema.Types.ObjectId, ref: 'User' },
     startedAt: { type: Date },
     finishedAt: { type: Date }

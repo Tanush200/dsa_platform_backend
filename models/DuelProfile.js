@@ -11,6 +11,7 @@ const DuelProfileSchema = new mongoose.Schema({
     elo: {
         type: Number,
         default: 1000,
+        index: true
     },
     rank: {
         type: String,
@@ -63,7 +64,8 @@ const DuelProfileSchema = new mongoose.Schema({
     },
     survivalElo: {
         type: Number,
-        default: 1000
+        default: 1000,
+        index: true
     },
     survivalRank: {
         type: String,

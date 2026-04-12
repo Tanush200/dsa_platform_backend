@@ -11,7 +11,8 @@ const ProblemSchema = new mongoose.Schema({
     index: true
   },
   pattern: {
-    type: String
+    type: String,
+    index: true
   },
   difficulty: {
     type: String,
