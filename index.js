@@ -99,6 +99,10 @@ app.use(cookieParser());
 app.use(express.json({ limit: '10kb' }));
 
 
+const { noCache } = require('./middleware/cache');
+app.use('/api', noCache);
+
+
 
 app.get('/api/health', (req, res) => {
   res.status(200).json({

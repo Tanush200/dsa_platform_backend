@@ -4,16 +4,17 @@ const { auth, admin } = require('../middleware/auth');
 const SurvivalQuestion = require('../models/SurvivalQuestion');
 const SurvivalDuel = require('../models/SurvivalDuel');
 const DuelProfile = require('../models/DuelProfile');
+const { setCache } = require('../middleware/cache');
 
 
-router.get('/questions', auth, async (req, res) => {
+router.get('/questions', [auth, setCache(600)], async (req, res) => {
     try {
         const page = parseInt(req.query.page) || 1;
         const limit = parseInt(req.query.limit) || 50;
         const skip = (page - 1) * limit;
 
         const query = req.user.role === 'admin' ? {} : { active: true };
-        
+
         const total = await SurvivalQuestion.countDocuments(query);
         const questions = await SurvivalQuestion.find(query)
             .sort({ createdAt: -1 })
@@ -89,12 +90,12 @@ router.get('/duel/:id', auth, async (req, res) => {
 });
 
 
-router.get('/leaderboard', auth, async (req, res) => {
+router.get('/leaderboard', [auth, setCache(300)], async (req, res) => {
     try {
         const top = await DuelProfile.find({ survivalTotalDuels: { $gt: 0 } })
             .sort({ survivalElo: -1 })
             .limit(50)
-            .populate('user', 'nickname') // Only send nickname, hide email
+            .populate('user', 'nickname')
             .lean();
         res.json(top);
     } catch (err) {
