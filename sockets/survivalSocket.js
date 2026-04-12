@@ -561,7 +561,22 @@ const RANK_DIFFICULTY = {
 
 async function getQuestionsForRank(rank, count = 50, excludeIds = []) {
     const difficulties = RANK_DIFFICULTY[rank] || ['Easy'];
-    const ninIds = excludeIds.map(id => {
+
+    const totalCount = await SurvivalQuestion.countDocuments({
+        active: true,
+        difficulty: { $in: difficulties }
+    });
+
+    let finalExcludeIds = excludeIds;
+
+    if (excludeIds.length >= (totalCount * 0.8)) {
+        console.log(`[Survival] Pool exhausted > 80% for rank ${rank}. Rotating history.`);
+
+        const keepCount = Math.floor(totalCount * 0.2);
+        finalExcludeIds = excludeIds.slice(-keepCount);
+    }
+
+    const ninIds = finalExcludeIds.map(id => {
         try { return new mongoose.Types.ObjectId(id); } catch (e) { return id; }
     });
 
@@ -910,10 +925,21 @@ async function endDuel(roomId, winnerId, io, existingDuel = null) {
                 else if (score === 0) prof.survivalLosses = (prof.survivalLosses || 0) + 1;
                 prof.survivalBestStreak = Math.max(prof.survivalBestStreak || 0, p.bestStreak);
 
+                // if (p.questions && p.qIndex > 0) {
+                //     const seenIds = p.questions.slice(0, p.qIndex + 1).map(q => q._id.toString());
+                //     const currentSeen = (prof.survivalSeenQuestions || []).map(id => id.toString());
+                //     const uniqueSeen = [...new Set([...currentSeen, ...seenIds])];
+                //     prof.survivalSeenQuestions = uniqueSeen.slice(-800);
+                // }
+
                 if (p.questions && p.qIndex > 0) {
-                    const seenIds = p.questions.slice(0, p.qIndex + 1).map(q => q._id.toString());
+                    const newSeenIds = p.questions.slice(0, p.qIndex + 1).map(q => q._id.toString());
+
                     const currentSeen = (prof.survivalSeenQuestions || []).map(id => id.toString());
-                    const uniqueSeen = [...new Set([...currentSeen, ...seenIds])];
+
+                    const filteredHistory = currentSeen.filter(id => !newSeenIds.includes(id));
+                    const uniqueSeen = [...filteredHistory, ...newSeenIds];
+
                     prof.survivalSeenQuestions = uniqueSeen.slice(-800);
                 }
 
@@ -929,7 +955,7 @@ async function endDuel(roomId, winnerId, io, existingDuel = null) {
                 const playedToday = userHistory.includes(istTodayStr);
                 const playedYesterday = userHistory.includes(istYesterdayStr);
 
-                console.log(`[StreakDebug] User: ${uid}, Today: ${istTodayStr}, History: ${userHistory.slice(-5)}`);
+                // console.log(`[StreakDebug] User: ${uid}, Today: ${istTodayStr}, History: ${userHistory.slice(-5)}`);
 
                 if (!playedToday) {
                     if (playedYesterday) {
@@ -988,9 +1014,36 @@ async function startSurvivalDuel(p1, p2, io) {
         const rank1 = prof1?.survivalRank || 'Recruit';
         const rank2 = p2.isBot ? rank1 : (prof2?.survivalRank || 'Recruit');
 
-        const [questions1, questions2] = await Promise.all([
-            getQuestionsForRank(rank1, 60, prof1?.survivalSeenQuestions || []),
-            getQuestionsForRank(rank2, 60, p2.isBot ? [] : (prof2?.survivalSeenQuestions || []))
+        let questions1, questions2;
+        if (rank1 === rank2) {
+            const combinedExcludes = [
+                ...(prof1?.survivalSeenQuestions || []),
+                ...(p2.isBot ? [] : (prof2?.survivalSeenQuestions || []))
+            ];
+
+            questions1 = await getQuestionsForRank(rank1, 60, combinedExcludes);
+            questions2 = [...questions1];
+
+            // console.log(`[Survival] Fair Play match: ${p1.username} vs ${p2.username} using shared pool.`);
+        } else {
+            [questions1, questions2] = await Promise.all([
+                getQuestionsForRank(rank1, 60, prof1?.survivalSeenQuestions || []),
+                getQuestionsForRank(rank2, 60, p2.isBot ? [] : (prof2?.survivalSeenQuestions || []))
+            ]);
+        }
+
+        const updateHistory = async (prof, questions) => {
+            if (!prof || !questions || questions.length === 0) return;
+            const newIds = questions.map(q => q._id.toString());
+            const current = (prof.survivalSeenQuestions || []).map(id => id.toString());
+            const filtered = current.filter(id => !newIds.includes(id));
+            prof.survivalSeenQuestions = [...filtered, ...newIds].slice(-800);
+            await prof.save();
+        };
+
+        await Promise.all([
+            updateHistory(prof1, questions1),
+            updateHistory(prof2, questions2)
         ]);
 
         const p1Socket = io.sockets.sockets.get(p1.socketId);
