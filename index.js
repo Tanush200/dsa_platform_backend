@@ -64,10 +64,11 @@ app.use(helmet());
 
 const globalLimiter = rateLimit({
   windowMs: 15 * 60 * 1000,
-  limit: 100,
+  limit: 5000,
   message: { status: 'fail', message: 'Too many requests, please try again later' },
   standardHeaders: true,
   legacyHeaders: false,
+  skip: (req) => process.env.NODE_ENV !== 'production',
 });
 app.use('/api/', globalLimiter);
 

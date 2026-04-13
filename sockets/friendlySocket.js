@@ -46,7 +46,8 @@ async function evaluateFriendlyAnswer(roomId, userId, selectedOptionIndex, io) {
     await setJson(REDIS_FRIENDLY_PREFIX + roomId, room);
 
     io.to(roomId).emit('friendly:stateUpdate', {
-        players: serializeFriendlyPlayers(room.players)
+        players: serializeFriendlyPlayers(room.players),
+        domain: room.domain
     });
 
     await checkFriendlyWinConditions(roomId, io);
@@ -117,6 +118,7 @@ function formatQ(q, index) {
         text: q.questionText,
         codeSnippet: q.codeSnippet,
         options: q.options,
+        domain: q.domain || 'cs',
         index: index,
         total: 10
     };
@@ -125,7 +127,7 @@ function formatQ(q, index) {
 module.exports = function attachFriendlySocket(io) {
     io.on('connection', (socket) => {
 
-        socket.on('friendly:create', async ({ mode }) => {
+        socket.on('friendly:create', async ({ mode, domain }) => {
             const shortId = Math.random().toString(36).substr(2, 6).toUpperCase();
             const roomId = `friendly_${shortId}`;
 
@@ -137,6 +139,7 @@ module.exports = function attachFriendlySocket(io) {
                 id: roomId,
                 shortId: shortId,
                 mode: mode || 'speed',
+                domain: domain || 'cs',
                 status: 'waiting',
                 players: {
                     [socket.userId]: {
@@ -199,7 +202,8 @@ module.exports = function attachFriendlySocket(io) {
 
             io.to(roomId).emit('friendly:stateUpdate', {
                 players: serializeFriendlyPlayers(room.players),
-                status: room.status
+                status: room.status,
+                domain: room.domain
             });
 
             if (isExisting && room.status === 'active') {
@@ -226,7 +230,11 @@ module.exports = function attachFriendlySocket(io) {
 
             if (allReady) {
                 room.status = 'active';
-                room.questions = await SurvivalQuestion.aggregate([{ $sample: { size: 10 } }]);
+                const roomDomain = room.domain || 'cs';
+                room.questions = await SurvivalQuestion.aggregate([
+                    { $match: { domain: roomDomain, active: true } },
+                    { $sample: { size: 10 } }
+                ]);
                 await setJson(REDIS_FRIENDLY_PREFIX + roomId, room);
 
                 io.to(roomId).emit('friendly:started', {

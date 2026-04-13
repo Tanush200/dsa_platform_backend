@@ -87,7 +87,20 @@ const DuelProfileSchema = new mongoose.Schema({
         type: mongoose.Schema.Types.ObjectId,
         ref: 'SurvivalQuestion'
     }],
-    survivalActivityHistory: [String]
+    survivalActivityHistory: [String],
+    domainStats: {
+        type: Map,
+        of: new mongoose.Schema({
+            elo: { type: Number, default: 1000 },
+            rank: { type: String, default: 'Recruit' },
+            wins: { type: Number, default: 0 },
+            losses: { type: Number, default: 0 },
+            bestStreak: { type: Number, default: 0 },
+            totalDuels: { type: Number, default: 0 },
+            seenQuestions: [{ type: mongoose.Schema.Types.ObjectId, ref: 'SurvivalQuestion' }]
+        }, { _id: false }),
+        default: {}
+    }
 }, { timestamps: true });
 
 
@@ -109,6 +122,19 @@ DuelProfileSchema.pre('save', async function () {
     else if (sElo >= 1100) this.survivalRank = 'Fighter';
     else if (sElo >= 900) this.survivalRank = 'Survivor';
     else this.survivalRank = 'Recruit';
+
+    if (this.domainStats) {
+        for (const [domain, stats] of this.domainStats.entries()) {
+            const dElo = stats.elo;
+            if (dElo >= 2000) stats.rank = 'Legend';
+            else if (dElo >= 1600) stats.rank = 'Champion';
+            else if (dElo >= 1300) stats.rank = 'Warrior';
+            else if (dElo >= 1100) stats.rank = 'Fighter';
+            else if (dElo >= 900) stats.rank = 'Survivor';
+            else stats.rank = 'Recruit';
+            this.domainStats.set(domain, stats);
+        }
+    }
 });
 
 module.exports = mongoose.model('DuelProfile', DuelProfileSchema);

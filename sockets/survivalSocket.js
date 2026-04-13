@@ -124,6 +124,7 @@
 //             type: q.type,
 //             difficulty: q.difficulty,
 //             points: q.points,
+//             domain: q.domain || 'cs',
 //             timeLimit: TIME_PER_QUESTION
 //         });
 //     }
@@ -543,7 +544,7 @@ const { addQuestionTimer, addGlobalTimer, addEndMatchJob } = require('../service
 const { recordSolve } = require('../services/userActivityService');
 
 
-const REDIS_QUEUE_KEY = 'survival:queue';
+const REDIS_QUEUE_PREFIX = 'survival:queue:';
 const REDIS_DUEL_PREFIX = 'survival:duel:';
 
 const TIME_PER_QUESTION = 20000;
@@ -560,12 +561,13 @@ const RANK_DIFFICULTY = {
 
 
 
-async function getQuestionsForRank(rank, count = 50, excludeIds = []) {
+async function getQuestionsForRank(rank, count = 50, excludeIds = [], domain = 'cs') {
     const difficulties = RANK_DIFFICULTY[rank] || ['Easy'];
 
     const totalCount = await SurvivalQuestion.countDocuments({
         active: true,
-        difficulty: { $in: difficulties }
+        difficulty: { $in: difficulties },
+        domain: domain
     });
 
     let finalExcludeIds = excludeIds;
@@ -586,7 +588,8 @@ async function getQuestionsForRank(rank, count = 50, excludeIds = []) {
             $match: {
                 active: true,
                 difficulty: { $in: difficulties },
-                _id: { $nin: ninIds }
+                _id: { $nin: ninIds },
+                domain: domain
             }
         },
         { $sample: { size: count } }
@@ -694,6 +697,7 @@ async function nextQuestion(roomId, userId, io) {
             type: q.type,
             difficulty: q.difficulty,
             points: q.points,
+            domain: q.domain || 'cs',
             timeLimit: TIME_PER_QUESTION
         });
     }
@@ -872,6 +876,7 @@ async function endDuel(roomId, winnerId, io, existingDuel = null) {
 
     io.to(roomId).emit('survival:ended', {
         winnerId,
+        domain: duelData.domain || 'cs',
         players: serializePlayers(duelData.players)
     });
 
@@ -880,6 +885,7 @@ async function endDuel(roomId, winnerId, io, existingDuel = null) {
             roomId,
             winnerId,
             duelId: duelData.duelId,
+            domain: duelData.domain || 'cs',
             players: duelData.players
         });
     } catch (e) {
@@ -890,7 +896,7 @@ async function endDuel(roomId, winnerId, io, existingDuel = null) {
 
 
 
-async function startSurvivalDuel(p1, p2, io) {
+async function startSurvivalDuel(p1, p2, io, domain = 'cs') {
     try {
         const roomId = uuidv4();
         const duelModel = new SurvivalDuel({
@@ -919,14 +925,14 @@ async function startSurvivalDuel(p1, p2, io) {
                 ...(p2.isBot ? [] : (prof2?.survivalSeenQuestions || []))
             ];
 
-            questions1 = await getQuestionsForRank(rank1, 60, combinedExcludes);
+            questions1 = await getQuestionsForRank(rank1, 60, combinedExcludes, domain);
             questions2 = [...questions1];
 
             // console.log(`[Survival] Fair Play match: ${p1.username} vs ${p2.username} using shared pool.`);
         } else {
             [questions1, questions2] = await Promise.all([
-                getQuestionsForRank(rank1, 60, prof1?.survivalSeenQuestions || []),
-                getQuestionsForRank(rank2, 60, p2.isBot ? [] : (prof2?.survivalSeenQuestions || []))
+                getQuestionsForRank(rank1, 60, prof1?.survivalSeenQuestions || [], domain),
+                getQuestionsForRank(rank2, 60, p2.isBot ? [] : (prof2?.survivalSeenQuestions || []), domain)
             ]);
         }
 
@@ -960,6 +966,7 @@ async function startSurvivalDuel(p1, p2, io) {
         const matchData = {
             roomId,
             duelId: duelModel._id,
+            domain,
             globalTimerEnd,
             players: {
                 [p1Id]: { username: p1.username, points: 0, streak: 0, bestStreak: 0, lives: 4, eliminated: false, socketId: p1.socketId, qIndex: 0, questions: questions1, rank: rank1, isDisconnected: false, isBot: false },
@@ -990,56 +997,61 @@ async function startSurvivalDuel(p1, p2, io) {
 }
 
 module.exports = function attachSurvivalSocket(io) {
+    const DOMAINS = ['cs', 'aptitude', 'gk', 'ece', 'me', 'ce', 'upsc'];
+
     setInterval(async () => {
-        const queueData = await redis.lrange(REDIS_QUEUE_KEY, 0, -1);
-        if (queueData.length === 0) return;
+        for (const domain of DOMAINS) {
+            const queueKey = REDIS_QUEUE_PREFIX + domain;
+            const queueData = await redis.lrange(queueKey, 0, -1);
+            if (queueData.length === 0) continue;
 
-        let parsedQueue = queueData.map(item => JSON.parse(item));
-        let i = 0;
-        while (i < parsedQueue.length) {
-            const p1 = parsedQueue[i];
-            const timeInQueue = Date.now() - p1.joinedAt;
+            let parsedQueue = queueData.map(item => JSON.parse(item));
+            let i = 0;
+            while (i < parsedQueue.length) {
+                const p1 = parsedQueue[i];
+                const timeInQueue = Date.now() - p1.joinedAt;
 
-            if (timeInQueue > 5000) {
-                await redis.lrem(REDIS_QUEUE_KEY, 0, queueData[i]);
-                parsedQueue.splice(i, 1);
-                queueData.splice(i, 1);
+                if (timeInQueue > 12000) {
+                    await redis.lrem(queueKey, 0, queueData[i]);
+                    parsedQueue.splice(i, 1);
+                    queueData.splice(i, 1);
 
-                const botName = BOT_NAMES[Math.floor(Math.random() * BOT_NAMES.length)];
-                await startSurvivalDuel(p1, {
-                    userId: new mongoose.Types.ObjectId(),
-                    username: botName,
-                    isBot: true
-                }, io);
-                continue;
-            }
-
-            const allowedGap = timeInQueue > 10000 ? 600 : (timeInQueue > 5000 ? 300 : 100);
-
-            let matchedIdx = -1;
-            for (let j = i + 1; j < parsedQueue.length; j++) {
-                const p2 = parsedQueue[j];
-                if (Math.abs(p1.elo - p2.elo) <= allowedGap) {
-                    matchedIdx = j;
-                    break;
+                    const botName = BOT_NAMES[Math.floor(Math.random() * BOT_NAMES.length)];
+                    await startSurvivalDuel(p1, {
+                        userId: new mongoose.Types.ObjectId(),
+                        username: botName,
+                        isBot: true
+                    }, io, domain);
+                    continue;
                 }
-            }
 
-            if (matchedIdx !== -1) {
-                const p2 = parsedQueue[matchedIdx];
-                await redis.multi()
-                    .lrem(REDIS_QUEUE_KEY, 0, queueData[i])
-                    .lrem(REDIS_QUEUE_KEY, 0, queueData[matchedIdx])
-                    .exec();
+                const allowedGap = timeInQueue > 10000 ? 600 : (timeInQueue > 5000 ? 300 : 100);
 
-                parsedQueue.splice(matchedIdx, 1);
-                parsedQueue.splice(i, 1);
-                queueData.splice(matchedIdx, 1);
-                queueData.splice(i, 1);
+                let matchedIdx = -1;
+                for (let j = i + 1; j < parsedQueue.length; j++) {
+                    const p2 = parsedQueue[j];
+                    if (Math.abs(p1.elo - p2.elo) <= allowedGap) {
+                        matchedIdx = j;
+                        break;
+                    }
+                }
 
-                await startSurvivalDuel(p1, p2, io);
-            } else {
-                i++;
+                if (matchedIdx !== -1) {
+                    const p2 = parsedQueue[matchedIdx];
+                    await redis.multi()
+                        .lrem(queueKey, 0, queueData[i])
+                        .lrem(queueKey, 0, queueData[matchedIdx])
+                        .exec();
+
+                    parsedQueue.splice(matchedIdx, 1);
+                    parsedQueue.splice(i, 1);
+                    queueData.splice(matchedIdx, 1);
+                    queueData.splice(i, 1);
+
+                    await startSurvivalDuel(p1, p2, io, domain);
+                } else {
+                    i++;
+                }
             }
         }
     }, 1000);
@@ -1074,29 +1086,41 @@ module.exports = function attachSurvivalSocket(io) {
     io.on('connection', (socket) => {
         if (!socket.userId) return;
 
-        socket.on('survival:joinQueue', async () => {
-            const queueData = await redis.lrange(REDIS_QUEUE_KEY, 0, -1);
+        socket.on('survival:joinQueue', async (data) => {
+            const domain = data?.domain || 'cs';
+            const queueKey = REDIS_QUEUE_PREFIX + domain;
+
+            const queueData = await redis.lrange(queueKey, 0, -1);
             
             const existingEntry = queueData.find(item => JSON.parse(item).userId === socket.userId);
             if (existingEntry) {
-                const currentLen = await redis.llen(REDIS_QUEUE_KEY);
+                const currentLen = await redis.llen(queueKey);
                 socket.emit('survival:queued', { position: currentLen });
                 return;
             }
  
             try {
                 const profile = await DuelProfile.findOne({ user: socket.userId }).populate('user', 'nickname');
+                
+                // Read from domainStats map if available, fallback to legacy survivalElo
+                let elo = profile?.survivalElo || 1000;
+                if (domain !== 'cs' && profile?.domainStats) {
+                    const stats = profile.domainStats.get(domain);
+                    if (stats) elo = stats.elo;
+                }
+
                 const player = {
                     userId: socket.userId,
                     socketId: socket.id,
                     username: socket.username,
                     nickname: profile?.user?.nickname || "",
-                    elo: profile?.survivalElo || 1000,
+                    elo,
+                    domain, // important so disconnect can find them
                     joinedAt: Date.now()
                 };
                 
-                await redis.rpush(REDIS_QUEUE_KEY, JSON.stringify(player));
-                const newLen = await redis.llen(REDIS_QUEUE_KEY);
+                await redis.rpush(queueKey, JSON.stringify(player));
+                const newLen = await redis.llen(queueKey);
                 socket.emit('survival:queued', { position: newLen });
             } catch (err) { 
                 socket.emit('survival:error', { message: "Failed to join queue" }); 
@@ -1104,10 +1128,12 @@ module.exports = function attachSurvivalSocket(io) {
         });
 
         socket.on('survival:leaveQueue', async () => {
-            const queueData = await redis.lrange(REDIS_QUEUE_KEY, 0, -1);
-            const playerJson = queueData.find(item => JSON.parse(item).userId === socket.userId);
-            if (playerJson) {
-                await redis.lrem(REDIS_QUEUE_KEY, 0, playerJson);
+            const DOMAINS = ['cs', 'aptitude', 'gk', 'ece', 'me', 'ce', 'upsc'];
+            for (const domain of DOMAINS) {
+                const queueKey = REDIS_QUEUE_PREFIX + domain;
+                const queueData = await redis.lrange(queueKey, 0, -1);
+                const playerStr = queueData.find(item => JSON.parse(item).userId === socket.userId);
+                if (playerStr) await redis.lrem(queueKey, 0, playerStr);
             }
         });
 
@@ -1144,10 +1170,12 @@ module.exports = function attachSurvivalSocket(io) {
         });
 
         socket.on('disconnect', async () => {
-            const queueData = await redis.lrange(REDIS_QUEUE_KEY, 0, -1);
-            const playerJson = queueData.find(item => JSON.parse(item).userId === socket.userId);
-            if (playerJson) {
-                await redis.lrem(REDIS_QUEUE_KEY, 0, playerJson);
+            const DOMAINS = ['cs', 'aptitude', 'gk', 'ece', 'me', 'ce', 'upsc'];
+            for (const domain of DOMAINS) {
+                const queueKey = REDIS_QUEUE_PREFIX + domain;
+                const queueData = await redis.lrange(queueKey, 0, -1);
+                const playerStr = queueData.find(item => JSON.parse(item).userId === socket.userId);
+                if (playerStr) await redis.lrem(queueKey, 0, playerStr);
             }
 
             if (socket.roomId) {

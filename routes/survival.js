@@ -96,14 +96,46 @@ router.get('/leaderboard', [auth, setCache(300)], async (req, res) => {
         const page = parseInt(req.query.page) || 1;
         const limit = parseInt(req.query.limit) || 20;
         const skip = (page - 1) * limit;
+        const domain = req.query.domain || 'cs';
 
-        const total = await DuelProfile.countDocuments({ survivalTotalDuels: { $gt: 0 } });
-        const top = await DuelProfile.find({ survivalTotalDuels: { $gt: 0 } })
-            .sort({ survivalElo: -1 })
-            .skip(skip)
-            .limit(limit)
-            .populate('user', 'nickname')
-            .lean();
+        let total, topRaw;
+
+        if (domain === 'cs') {
+            total = await DuelProfile.countDocuments({ survivalTotalDuels: { $gt: 0 } });
+            topRaw = await DuelProfile.find({ survivalTotalDuels: { $gt: 0 } })
+                .sort({ survivalElo: -1 })
+                .skip(skip)
+                .limit(limit)
+                .populate('user', 'nickname username')
+                .lean();
+        } else {
+            const queryPath = `domainStats.${domain}.totalDuels`;
+            const sortPath = `domainStats.${domain}.elo`;
+            
+            total = await DuelProfile.countDocuments({ [queryPath]: { $gt: 0 } });
+            topRaw = await DuelProfile.find({ [queryPath]: { $gt: 0 } })
+                .sort({ [sortPath]: -1 })
+                .skip(skip)
+                .limit(limit)
+                .populate('user', 'nickname username')
+                .lean();
+        }
+
+        // Normalize response so the frontend doesn't break
+        const top = topRaw.map(profile => {
+            if (domain === 'cs') return profile;
+            
+            const stats = profile.domainStats?.[domain] || { elo: 1000, rank: 'Recruit', wins: 0, losses: 0, totalDuels: 0 };
+            return {
+                ...profile,
+                survivalElo: stats.elo,
+                survivalRank: stats.rank,
+                survivalWins: stats.wins,
+                survivalLosses: stats.losses,
+                survivalTotalDuels: stats.totalDuels
+            };
+        });
+
         res.json({
             leaderboard: top,
             total,
@@ -118,10 +150,27 @@ router.get('/leaderboard', [auth, setCache(300)], async (req, res) => {
 
 router.get('/my-profile', [auth, verifyGate, noCache], async (req, res) => {
     try {
+        const domain = req.query.domain || 'cs';
         let profile = await DuelProfile.findOne({ user: req.user.id })
             .select('-survivalSeenQuestions')
             .lean();
+            
         if (!profile) return res.json({ survivalElo: 1000, survivalRank: 'Recruit', survivalWins: 0, survivalLosses: 0, survivalBestStreak: 0, survivalTotalDuels: 0 });
+
+        // Normalize data to requested domain so frontend logic remains intact
+        if (domain !== 'cs') {
+            const stats = profile.domainStats?.[domain] || { elo: 1000, rank: 'Recruit', wins: 0, losses: 0, totalDuels: 0, bestStreak: 0 };
+            profile = {
+                ...profile,
+                survivalElo: stats.elo,
+                survivalRank: stats.rank,
+                survivalWins: stats.wins,
+                survivalLosses: stats.losses,
+                survivalTotalDuels: stats.totalDuels,
+                survivalBestStreak: stats.bestStreak
+            };
+        }
+
         res.json(profile);
     } catch (err) {
         console.error(err);
