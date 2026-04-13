@@ -6,7 +6,6 @@ const admin = require('../lib/firebaseAdmin');
 
 router.use(noCache);
 
-// Sync/Register user from Firebase
 router.post('/register', async (req, res) => {
   try {
     const { username, email, firebaseUid } = req.body;
@@ -17,43 +16,56 @@ router.post('/register', async (req, res) => {
     }
 
     const idToken = authHeader.split('Bearer ')[1];
-    
-    // Verify the token manually for registration sync
+
     const decodedToken = await admin.auth().verifyIdToken(idToken);
-    
+
     if (decodedToken.uid !== firebaseUid) {
       return res.status(401).json({ message: 'Identity mismatch detected.' });
     }
 
-    // Check if MongoDB user exists
-    let user = await User.findOne({ 
-      $or: [{ username }, { email }, { firebaseUid }] 
+    let user = await User.findOne({
+      $or: [{ email }, { firebaseUid }]
     });
 
     if (user) {
-      if (user.username === username && user.firebaseUid !== firebaseUid) {
-        return res.status(400).json({ message: 'Username already taken by another survivor.' });
+      if (user.firebaseUid === firebaseUid) {
+        return res.json({
+          message: 'Identity confirmed. Welcome back, Survivor.',
+          user: { id: user._id, username: user.username, email: user.email }
+        });
       }
-      // If user exists, just ensure firebaseUid is linked
+
       if (!user.firebaseUid) {
         user.firebaseUid = firebaseUid;
         await user.save();
+        return res.json({
+          message: 'Legacy identity securely linked to Firebase.',
+          user: { id: user._id, username: user.username, email: user.email }
+        });
+      }
+
+      if (user.firebaseUid !== firebaseUid) {
+        return res.status(401).json({ message: 'Identity conflict detected. Registry access denied.' });
       }
     } else {
-      // Create new MongoDB profile linked to Firebase identity
+      const usernameCheck = await User.findOne({ username });
+      if (usernameCheck) {
+        return res.status(400).json({ message: 'Codename already active in the arena. Choose another.' });
+      }
+
       user = new User({
         username,
         email,
         firebaseUid,
         role: 'student',
-        isVerified: true // Firebase handles verification status
+        isVerified: true
       });
       await user.save();
     }
 
     res.json({
       message: 'Induction successful! Profile synced with the Arena.',
-      user: { id: user._id, username, email }
+      user: { id: user._id, username: user.username, email: user.email }
     });
   } catch (error) {
     console.error("Registration sync error:", error);
@@ -62,9 +74,24 @@ router.post('/register', async (req, res) => {
 });
 
 router.post('/logout', (req, res) => {
-  // We don't have cookies anymore, but keeping for compatibility
   res.cookie('token', '', { expires: new Date(0) });
   res.json({ message: 'Logged out from Arena persistence layer.' });
+});
+
+const jwt = require('jsonwebtoken');
+const { protect } = require('../middleware/auth');
+
+router.get('/socket-token', protect, async (req, res) => {
+  try {
+    const token = jwt.sign(
+      { id: req.user._id, username: req.user.username },
+      process.env.JWT_SECRET,
+      { expiresIn: '1h' }
+    );
+    res.json({ token });
+  } catch (err) {
+    res.status(500).json({ message: 'Uplink generation failed.' });
+  }
 });
 
 module.exports = router;

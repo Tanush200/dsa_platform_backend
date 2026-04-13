@@ -9,24 +9,22 @@ async function auth(req, res, next) {
   }
 
   try {
-    // 1. Verify token with Firebase
+
     const decodedToken = await admin.auth().verifyIdToken(token);
-    
-    // 2. Find internal MongoDB user by firebaseUid (or email for legacy sync)
-    let user = await User.findOne({ 
-      $or: [{ firebaseUid: decodedToken.uid }, { email: decodedToken.email }] 
+
+    let user = await User.findOne({
+      $or: [{ firebaseUid: decodedToken.uid }, { email: decodedToken.email }]
     });
 
     if (!user) {
-      // User is verified by Firebase but doesn't have a profile in our DB yet.
-      // This is expected during the first few seconds of registration sync.
-      return res.status(403).json({ 
+
+      return res.status(403).json({
+        code: 'PROFILE_MISSING',
         message: 'Firebase identity verified, but MongoDB profile missing. Sync required.',
         firebaseUser: { uid: decodedToken.uid, email: decodedToken.email }
       });
     }
 
-    // 3. Inject user data for existing routes to use
     req.user = {
       id: user._id,
       uid: decodedToken.uid,
