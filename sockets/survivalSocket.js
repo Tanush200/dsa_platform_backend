@@ -1048,10 +1048,19 @@ module.exports = function attachSurvivalSocket(io) {
         if (!socket.userId) return;
 
         socket.on('survival:joinQueue', async () => {
+            console.log(`📡 [Server:Socket] JoinQueue received from user: ${socket.username} (${socket.userId})`);
             const queueData = await redis.lrange(REDIS_QUEUE_KEY, 0, -1);
-            if (queueData.find(item => JSON.parse(item).userId === socket.userId)) return;
-
+            
+            const existingEntry = queueData.find(item => JSON.parse(item).userId === socket.userId);
+            if (existingEntry) {
+                console.log(`📡 [Server:Socket] User ${socket.username} already in queue. Sending healing response.`);
+                const currentLen = await redis.llen(REDIS_QUEUE_KEY);
+                socket.emit('survival:queued', { position: currentLen });
+                return;
+            }
+ 
             try {
+                console.log(`📡 [Server:Socket] Fetching DuelProfile for ${socket.username}...`);
                 const profile = await DuelProfile.findOne({ user: socket.userId }).populate('user', 'nickname');
                 const player = {
                     userId: socket.userId,
@@ -1061,10 +1070,15 @@ module.exports = function attachSurvivalSocket(io) {
                     elo: profile?.survivalElo || 1000,
                     joinedAt: Date.now()
                 };
+                
                 await redis.rpush(REDIS_QUEUE_KEY, JSON.stringify(player));
                 const newLen = await redis.llen(REDIS_QUEUE_KEY);
+                console.log(`📡 [Server:Socket] SUCCESS: ${socket.username} added to queue at position ${newLen}`);
                 socket.emit('survival:queued', { position: newLen });
-            } catch (err) { socket.emit('survival:error', { message: "Failed to join queue" }); }
+            } catch (err) { 
+                console.error(`📡 [Server:Socket] ERROR joining queue for ${socket.username}:`, err);
+                socket.emit('survival:error', { message: "Failed to join queue" }); 
+            }
         });
 
         socket.on('survival:leaveQueue', async () => {
