@@ -1000,7 +1000,7 @@ module.exports = function attachSurvivalSocket(io) {
             const p1 = parsedQueue[i];
             const timeInQueue = Date.now() - p1.joinedAt;
 
-            if (timeInQueue > 12000) {
+            if (timeInQueue > 5000) {
                 await redis.lrem(REDIS_QUEUE_KEY, 0, queueData[i]);
                 parsedQueue.splice(i, 1);
                 queueData.splice(i, 1);
@@ -1042,29 +1042,22 @@ module.exports = function attachSurvivalSocket(io) {
                 i++;
             }
         }
-    }, 2000);
+    }, 1000);
 
     io.on('connection', (socket) => {
-        console.log(`🛡️ [Survival:Gatekeeper] Connection Attempt | ID: ${socket.id} | UserID: ${socket.userId} | Username: ${socket.username}`);
-        if (!socket.userId) {
-            console.warn(`🛡️ [Survival:Gatekeeper] Identity MISSING for ID: ${socket.id}. Skipping handlers.`);
-            return;
-        }
+        if (!socket.userId) return;
 
         socket.on('survival:joinQueue', async () => {
-            console.log(`📡 [Server:Socket] JoinQueue received from user: ${socket.username} (${socket.userId})`);
             const queueData = await redis.lrange(REDIS_QUEUE_KEY, 0, -1);
             
             const existingEntry = queueData.find(item => JSON.parse(item).userId === socket.userId);
             if (existingEntry) {
-                console.log(`📡 [Server:Socket] User ${socket.username} already in queue. Sending healing response.`);
                 const currentLen = await redis.llen(REDIS_QUEUE_KEY);
                 socket.emit('survival:queued', { position: currentLen });
                 return;
             }
  
             try {
-                console.log(`📡 [Server:Socket] Fetching DuelProfile for ${socket.username}...`);
                 const profile = await DuelProfile.findOne({ user: socket.userId }).populate('user', 'nickname');
                 const player = {
                     userId: socket.userId,
@@ -1077,10 +1070,8 @@ module.exports = function attachSurvivalSocket(io) {
                 
                 await redis.rpush(REDIS_QUEUE_KEY, JSON.stringify(player));
                 const newLen = await redis.llen(REDIS_QUEUE_KEY);
-                console.log(`📡 [Server:Socket] SUCCESS: ${socket.username} added to queue at position ${newLen}`);
                 socket.emit('survival:queued', { position: newLen });
             } catch (err) { 
-                console.error(`📡 [Server:Socket] ERROR joining queue for ${socket.username}:`, err);
                 socket.emit('survival:error', { message: "Failed to join queue" }); 
             }
         });

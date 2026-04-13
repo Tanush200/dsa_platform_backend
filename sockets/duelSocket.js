@@ -111,7 +111,6 @@ module.exports = function attachDuelSocket(io) {
             socketUserMap[socket.id] = { userId: socket.userId, mode };
 
             socket.emit('duel:queued', { mode, position: queue.length });
-            console.log(`[Duel] ${socket.username} joined ${mode} queue (size: ${queue.length})`);
 
             if (queue.length >= 2) {
                 queue.sort((a, b) => a.elo - b.elo);
@@ -165,7 +164,6 @@ module.exports = function attachDuelSocket(io) {
                     };
 
                     io.to(roomId).emit('duel:matched', duelData);
-                    console.log(`[Duel] Match created: ${player1.username} vs ${player2.username} (${mode})`);
 
                     setTimeout(async () => {
                         const liveDuel = await Duel.findById(duel._id);
@@ -192,7 +190,6 @@ module.exports = function attachDuelSocket(io) {
             if (idx !== -1) queue.splice(idx, 1);
             delete socketUserMap[socket.id];
             socket.emit('duel:leftQueue', { mode });
-            console.log(`[Duel] ${socket.username} left ${mode} queue`);
         });
 
         socket.on('duel:progressUpdate', ({ roomId, attempts, testsPassed, totalTests }) => {

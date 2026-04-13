@@ -164,6 +164,7 @@ try {
   console.error("CRITICAL: Failed to initialize Redis adapter. Survival mode will be disabled.", err.message);
 }
 
+// 📡 Socket Handlers
 const attachDuelSocket = require('./sockets/duelSocket');
 attachDuelSocket(io);
 
@@ -172,19 +173,6 @@ attachSurvivalSocket(io);
 
 const attachFriendlySocket = require('./sockets/friendlySocket');
 attachFriendlySocket(io);
-
-// 📡 Master Socket Telemetry Radar
-io.on('connection', (socket) => {
-  console.log(`🔔 [MASTER] New Connection | ID: ${socket.id} | User: ${socket.username || 'ANONYMOUS'} (${socket.userId || 'NO_ID'})`);
-  
-  socket.onAny((event, ...args) => {
-    console.log(`📥 [MASTER] Signal Received | Event: "${event}" | From: ${socket.username || 'UNKNOWN'} | ID: ${socket.id}`);
-  });
-
-  socket.on('disconnect', (reason) => {
-    console.log(`🔕 [MASTER] Disconnected | ID: ${socket.id} | Reason: ${reason}`);
-  });
-});
 
 require('./workers/survivalWorker');
 require('./workers/friendlyWorker');
