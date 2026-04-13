@@ -106,8 +106,8 @@ app.use(cookieParser());
 app.use(express.json({ limit: '10kb' }));
 
 
+// Cache management - handled by individual routers or specifically grouped below
 const { noCache } = require('./middleware/cache');
-app.use('/api', noCache);
 
 
 
@@ -125,12 +125,12 @@ app.get('/', (req, res) => res.status(200).send("Elite Syntax API - Secure & Hea
 
 
 
-app.use('/api/auth', require('./routes/auth'));
-app.use('/api/user', require('./routes/user'));
+app.use('/api/auth', noCache, require('./routes/auth'));
+app.use('/api/user', noCache, require('./routes/user'));
 app.use('/api/problems', require('./routes/problems'));
-app.use('/api/progress', require('./routes/progress'));
-app.use('/api/settings', require('./routes/settings'));
-app.use('/api/interview', require('./routes/interview'));
+app.use('/api/progress', noCache, require('./routes/progress'));
+app.use('/api/settings', noCache, require('./routes/settings'));
+app.use('/api/interview', noCache, require('./routes/interview'));
 app.use('/api/duel', require('./routes/duel'));
 app.use('/api/survival', require('./routes/survival'));
 

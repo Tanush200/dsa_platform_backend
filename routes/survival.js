@@ -4,7 +4,7 @@ const { auth, admin } = require('../middleware/auth');
 const SurvivalQuestion = require('../models/SurvivalQuestion');
 const SurvivalDuel = require('../models/SurvivalDuel');
 const DuelProfile = require('../models/DuelProfile');
-const { setCache } = require('../middleware/cache');
+const { setCache, noCache } = require('../middleware/cache');
 
 
 router.get('/questions', [auth, setCache(600)], async (req, res) => {
@@ -60,7 +60,7 @@ router.patch('/questions/:id/toggle', [auth, admin], async (req, res) => {
 });
 
 
-router.get('/history', auth, async (req, res) => {
+router.get('/history', [auth, noCache], async (req, res) => {
     try {
         const duels = await SurvivalDuel.find({ 'players.user': req.user.id, status: 'finished' })
             .sort({ finishedAt: -1 })
@@ -115,7 +115,7 @@ router.get('/leaderboard', [auth, setCache(300)], async (req, res) => {
 });
 
 
-router.get('/my-profile', auth, async (req, res) => {
+router.get('/my-profile', [auth, noCache], async (req, res) => {
     try {
         let profile = await DuelProfile.findOne({ user: req.user.id })
             .select('-survivalSeenQuestions')
