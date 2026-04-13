@@ -11,6 +11,9 @@ const { createAdapter } = require('@socket.io/redis-adapter');
 const Redis = require('ioredis');
 const morgan = require('morgan');
 const compression = require('compression');
+const pinoHttp = require('pino-http');
+const logger = require('./utils/logger');
+const errorHandler = require('./middleware/errorHandler');
 
 
 dotenv.config();
@@ -25,12 +28,16 @@ const allowedOrigins = process.env.CORS_ORIGINS
   ? [...new Set([...process.env.CORS_ORIGINS.split(',').map(o => o.trim()), ...baseOrigins])]
   : baseOrigins;
 
-console.log("Allowed Origins: ", allowedOrigins);
+logger.info({ allowedOrigins }, "CORS configuration initialized");
 
 
-if (!process.env.JWT_SECRET && process.env.NODE_ENV === 'production') {
-  console.error("FATAL: JWT_SECRET environment variable is missing.");
-  process.exit(1);
+if (process.env.NODE_ENV === 'production') {
+  const requiredEnv = ['JWT_SECRET', 'MONGODB_URI', 'REDIS_URL'];
+  const missing = requiredEnv.filter(k => !process.env[k]);
+  if (missing.length > 0) {
+    logger.fatal(`FATAL: Missing environment variables: ${missing.join(', ')}`);
+    process.exit(1);
+  }
 }
 
 
@@ -55,8 +62,17 @@ const botPatterns = [
 ];
 
 
-app.use(morgan(':method :url :status :res[content-length] - :response-time ms', {
-  skip: (req) => botPatterns.some(p => p.test(req.path))
+app.use(pinoHttp({
+  logger,
+  redact: ['req.headers.authorization', 'req.headers.cookie', 'res.headers["set-cookie"]'],
+  autoLogging: {
+    ignore: (req) => botPatterns.some(p => p.test(req.path))
+  },
+  customLogLevel: function (req, res, err) {
+    if (res.statusCode >= 500 || err) return 'error';
+    if (res.statusCode >= 400) return 'warn';
+    return 'silent';
+  }
 }));
 app.use(compression());
 app.use(helmet());
@@ -92,7 +108,7 @@ app.use(
         if (allowedOrigins.includes(origin)) {
           callback(null, true);
         } else {
-          console.error(`💥 CORS REJECTED: Origin "${origin}" is not in allowed list:`, allowedOrigins);
+          logger.warn({ origin }, "CORS REJECTED: Unauthorized origin attempt");
           callback(new Error(`CORS policy: This origin '${origin}' is not allowed.`));
         }
       } else {
@@ -139,13 +155,16 @@ app.use('/api/survival', require('./routes/survival'));
 app.all('/*path', (req, res) => {
   const isBot = botPatterns.some(p => p.test(req.path));
   if (!isBot) {
-    console.log(`🔍 404 Attempted access to non-existent route: ${req.originalUrl}`);
+    logger.warn(`🔍 404 Attempted access to non-existent route: ${req.originalUrl}`);
   }
   res.status(404).json({
     status: 'fail',
     message: `Can't find ${req.originalUrl} on this server!`
   });
 });
+
+// Error handling middleware
+app.use(errorHandler);
 
 
 try {
@@ -157,15 +176,15 @@ try {
 
   io.adapter(createAdapter(pubClient, subClient));
 
-  pubClient.on("error", (err) => console.error("Redis Pub Error:", err.message));
-  subClient.on("error", (err) => console.error("Redis Sub Error:", err.message));
+  pubClient.on("error", (err) => logger.error(`Redis Pub Error: ${err.message}`));
+  subClient.on("error", (err) => logger.error(`Redis Sub Error: ${err.message}`));
 
-  console.log("Redis Connection Initialized");
+  logger.info("Redis Connection Initialized");
 } catch (err) {
-  console.error("CRITICAL: Failed to initialize Redis adapter. Survival mode will be disabled.", err.message);
+  logger.error(err, "CRITICAL: Failed to initialize Redis adapter. Survival mode will be disabled.");
 }
 
-// 📡 Socket Handlers
+//  Socket Handlers
 const attachDuelSocket = require('./sockets/duelSocket');
 attachDuelSocket(io);
 
@@ -184,24 +203,22 @@ mongoose.connect(process.env.MONGODB_URI, {
   serverSelectionTimeoutMS: 5000,
   socketTimeoutMS: 45000,
 })
-  .then(() => console.log('MongoDB connected'))
-  .catch(err => console.error('MongoDB connection error:', err));
+  .then(() => logger.info('MongoDB connected'))
+  .catch(err => logger.error(err, 'MongoDB connection error:'));
 
 const PORT = process.env.PORT || 5000;
 
 server.listen(PORT, () => {
-  console.log(`Server running on port ${PORT}`);
+  logger.info(`Server running on port ${PORT}`);
 });
 
 
 process.on('uncaughtException', (err) => {
-  console.error('💥 UNCAUGHT EXCEPTION! Shutting down...', err.name, ':', err.message);
-  console.error(err.stack);
+  logger.fatal(err, '💥 UNCAUGHT EXCEPTION! Shutting down...');
   process.exit(1);
 });
 
 process.on('unhandledRejection', (err) => {
-  console.error('💥 UNHANDLED REJECTION! Shutting down...', err.name, ':', err.message);
-  console.error(err.stack);
+  logger.fatal(err, '💥 UNHANDLED REJECTION! Shutting down...');
   process.exit(1);
 });

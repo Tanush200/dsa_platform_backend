@@ -85,7 +85,7 @@ async function endFriendlyDuel(roomId, io) {
             players: room.players
         });
     } catch (err) {
-        console.error('[Friendly] Job Enqueue failed:', err.message);
+        logger.error(err, '[Friendly] Job Enqueue failed');
     }
 
     io.to(roomId).emit('friendly:ended', {

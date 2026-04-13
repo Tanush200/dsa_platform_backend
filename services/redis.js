@@ -7,12 +7,14 @@ const redis = new Redis(process.env.REDIS_URL || 'redis://localhost:6379', {
     maxRetriesPerRequest: null
 });
 
+const logger = require('../utils/logger');
+
 redis.on('connect', () => {
-    console.log('Redis connected');
+    logger.info('Redis connected');
 });
 
 redis.on('error', (err) => {
-    console.log('Redis error', err);
+    logger.error(err, 'Redis error');
 });
 
 

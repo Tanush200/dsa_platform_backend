@@ -24,6 +24,19 @@ const worker = new Worker('survivalQueue', async (job) => {
     else if (job.name === 'globalTimeout') {
         await handleGlobalTimeOut(roomId, global.io);
     }
+    else if (job.name === 'botTurn') {
+        const { runBotTurnLogic } = require('../sockets/survivalSocket');
+        await runBotTurnLogic(roomId, userId, global.io);
+    }
+    else if (job.name === 'abandonmentTimeout') {
+        const duel = await getJson(`survival:duel:${roomId}`);
+        if (duel && duel.players[userId]?.isDisconnected) {
+            duel.players[userId].eliminated = true;
+            const { setJson, checkWinConditions } = require('../sockets/survivalSocket');
+            await setJson(`survival:duel:${roomId}`, duel);
+            await checkWinConditions(roomId, global.io);
+        }
+    }
     else if (job.name === 'saveMatchResult') {
         try {
             const finalPlayers = Object.keys(jobPlayers).map(uid => ({
