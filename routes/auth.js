@@ -84,7 +84,11 @@ const { auth: protect } = require('../middleware/auth');
 router.get('/socket-token', protect, async (req, res) => {
   try {
     const token = jwt.sign(
-      { id: req.user._id, username: req.user.username },
+      { 
+        id: req.user._id, 
+        username: req.user.username,
+        type: 'socket_admission' 
+      },
       process.env.JWT_SECRET,
       { expiresIn: '1h' }
     );
