@@ -858,6 +858,26 @@ async function checkWinConditions(roomId, io, existingDuel = null) {
         return;
     }
 
+    // AUTO-END IF VS BOT AND HUMAN FINISHED/LOST
+    if (p1.eliminated && p2.isBot) {
+        let winner = null;
+        if (p1.points > p2.points) winner = p1Id;
+        else if (p2.points > p1.points) winner = p2Id;
+        else if (p1.qIndex > p2.qIndex) winner = p1Id;
+        else winner = p2Id;
+        await endDuel(roomId, winner, io, duel);
+        return;
+    }
+    if (p2.eliminated && p1.isBot) {
+        let winner = null;
+        if (p1.points > p2.points) winner = p1Id;
+        else if (p2.points > p1.points) winner = p2Id;
+        else if (p2.qIndex > p1.qIndex) winner = p2Id;
+        else winner = p1Id;
+        await endDuel(roomId, winner, io, duel);
+        return;
+    }
+
     if (p1.eliminated && !p2.eliminated) {
         if (p2.points > p1.points) await endDuel(roomId, p2Id, io, duel);
     } else if (p2.eliminated && !p1.eliminated) {
