@@ -1045,7 +1045,11 @@ module.exports = function attachSurvivalSocket(io) {
     }, 2000);
 
     io.on('connection', (socket) => {
-        if (!socket.userId) return;
+        console.log(`🛡️ [Survival:Gatekeeper] Connection Attempt | ID: ${socket.id} | UserID: ${socket.userId} | Username: ${socket.username}`);
+        if (!socket.userId) {
+            console.warn(`🛡️ [Survival:Gatekeeper] Identity MISSING for ID: ${socket.id}. Skipping handlers.`);
+            return;
+        }
 
         socket.on('survival:joinQueue', async () => {
             console.log(`📡 [Server:Socket] JoinQueue received from user: ${socket.username} (${socket.userId})`);
