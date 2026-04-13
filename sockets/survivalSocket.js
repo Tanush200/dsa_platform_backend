@@ -992,7 +992,7 @@ async function startSurvivalDuel(p1, p2, io, domain = 'cs') {
         setTimeout(() => {
             nextQuestion(roomId, p1Id, io);
             nextQuestion(roomId, p2Id, io);
-        }, 5000);
+        }, 10000); // Increased from 5s to 10s for smoother client transition
     } catch (err) { console.error("Match error:", err); }
 }
 
