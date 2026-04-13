@@ -1,31 +1,51 @@
-const jwt = require('jsonwebtoken');
+const admin = require('../lib/firebaseAdmin');
+const User = require('../models/User');
 
-function auth(req, res, next) {
-  const token = req.cookies?.token || req.header('Authorization')?.split(' ')[1];
+async function auth(req, res, next) {
+  const token = req.header('Authorization')?.split(' ')[1];
 
-  if (!token) return res.status(401).json({ message: 'Access denied. No token provided.' });
+  if (!token) {
+    return res.status(401).json({ message: 'Access denied. No token provided.' });
+  }
 
   try {
-    const secret = process.env.JWT_SECRET;
-    if (!secret && process.env.NODE_ENV === 'production') {
-      throw new Error('JWT_SECRET is missing in production environment');
+    // 1. Verify token with Firebase
+    const decodedToken = await admin.auth().verifyIdToken(token);
+    
+    // 2. Find internal MongoDB user by firebaseUid (or email for legacy sync)
+    let user = await User.findOne({ 
+      $or: [{ firebaseUid: decodedToken.uid }, { email: decodedToken.email }] 
+    });
+
+    if (!user) {
+      // User is verified by Firebase but doesn't have a profile in our DB yet.
+      // This is expected during the first few seconds of registration sync.
+      return res.status(403).json({ 
+        message: 'Firebase identity verified, but MongoDB profile missing. Sync required.',
+        firebaseUser: { uid: decodedToken.uid, email: decodedToken.email }
+      });
     }
-    const decoded = jwt.verify(token, secret || 'superDsaSecretKey2026!');
-    req.user = decoded;
+
+    // 3. Inject user data for existing routes to use
+    req.user = {
+      id: user._id,
+      uid: decodedToken.uid,
+      email: decodedToken.email,
+      role: user.role,
+      username: user.username
+    };
+
     next();
   } catch (error) {
-    res.status(400).json({ message: 'Invalid token.' });
+    console.error('Firebase Auth Middleware Error:', error);
+    res.status(401).json({ message: 'Invalid or expired token.' });
   }
 }
 
-const User = require('../models/User');
-
-async function admin(req, res, next) {
+async function adminMiddleware(req, res, next) {
   try {
-    const realUser = await User.findById(req.user.id);
-
-    if (!realUser || realUser.role !== 'admin') {
-      return res.status(403).json({ message: 'Access denied. You are not a real administrator.' });
+    if (!req.user || req.user.role !== 'admin') {
+      return res.status(403).json({ message: 'Access denied. Administrative authority required.' });
     }
     next();
   } catch (error) {
@@ -33,4 +53,4 @@ async function admin(req, res, next) {
   }
 }
 
-module.exports = { auth, admin };
+module.exports = { auth, admin: adminMiddleware };

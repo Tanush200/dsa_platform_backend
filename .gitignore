@@ -7,3 +7,5 @@ addSurvival300.js
 seed_high_quality_dsa.js
 check_profile.js
 migrateUsers.js
+scripts
+firebase-service-account.json

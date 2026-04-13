@@ -6,6 +6,12 @@ const UserSchema = new mongoose.Schema({
     required: true,
     unique: true
   },
+  firebaseUid: {
+    type: String,
+    unique: true,
+    sparse: true,
+    index: true
+  },
   email: {
     type: String,
     unique: true,
@@ -14,7 +20,7 @@ const UserSchema = new mongoose.Schema({
   },
   isVerified: {
     type: Boolean,
-    default: true
+    default: false
   },
   verificationToken: {
     type: String,
@@ -30,7 +36,7 @@ const UserSchema = new mongoose.Schema({
   },
   password: {
     type: String,
-    required: true
+    required: false // No longer required for Firebase users
   },
   nickname: {
     type: String,

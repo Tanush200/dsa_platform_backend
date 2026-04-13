@@ -10,9 +10,11 @@ const SurvivalQuestionSchema = new mongoose.Schema({
         enum: ['output_prediction', 'dry_run', 'complexity', 'pattern_recognition', 'data_structure', 'bug_detection', 'conceptual'],
         required: true
     },
-    difficulty: { type: String, enum: ['Easy', 'Medium', 'Hard'], default: 'Easy' },
+    difficulty: { type: String, enum: ['Easy', 'Medium', 'Hard'], default: 'Easy', index: true },
     points: { type: Number, default: 10 },
-    active: { type: Boolean, default: true }
+    active: { type: Boolean, default: true, index: true }
 }, { timestamps: true });
+
+SurvivalQuestionSchema.index({ difficulty: 1, active: 1 });
 
 module.exports = mongoose.model('SurvivalQuestion', SurvivalQuestionSchema);
