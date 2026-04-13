@@ -1044,6 +1044,33 @@ module.exports = function attachSurvivalSocket(io) {
         }
     }, 1000);
 
+    io.use(async (socket, next) => {
+        try {
+            const token =
+                socket.handshake.auth?.token ||
+                socket.handshake.query?.token;
+            if (!token) return next(new Error('Authentication required'));
+
+            const jwt = require('jsonwebtoken');
+            const decoded = jwt.verify(token, process.env.JWT_SECRET || 'superDsaSecretKey2026!');
+
+            if (decoded.type !== 'socket_admission') {
+                return next(new Error('Invalid token type for socket access'));
+            }
+
+            const User = require('../models/User');
+            const user = await User.findById(decoded.id);
+            if (!user) return next(new Error('User identity not found in registry'));
+            if (!user.isVerified) return next(new Error('Identity verification required'));
+
+            socket.userId = decoded.id;
+            socket.username = decoded.username;
+            next();
+        } catch (err) {
+            next(new Error('Invalid token or verification failed'));
+        }
+    });
+
     io.on('connection', (socket) => {
         if (!socket.userId) return;
 

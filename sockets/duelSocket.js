@@ -76,7 +76,7 @@ async function getRandomProblem(mode) {
 
 module.exports = function attachDuelSocket(io) {
 
-    io.use((socket, next) => {
+    io.use(async (socket, next) => {
         try {
             const token =
                 socket.handshake.auth?.token ||
@@ -88,6 +88,11 @@ module.exports = function attachDuelSocket(io) {
             if (decoded.type !== 'socket_admission') {
                 return next(new Error('Invalid token type for socket access'));
             }
+
+            const User = require('../models/User');
+            const user = await User.findById(decoded.id);
+            if (!user) return next(new Error('User identity not found in registry'));
+            if (!user.isVerified) return next(new Error('Identity verification required'));
 
             socket.userId = decoded.id;
             socket.username = decoded.username;

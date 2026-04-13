@@ -1,6 +1,7 @@
 const express = require('express');
 const router = express.Router();
 const { auth, admin } = require('../middleware/auth');
+const verifyGate = require('../middleware/verifyGate');
 
 const Duel = require('../models/Duel');
 const DuelProblem = require('../models/DuelProblem');
@@ -197,7 +198,7 @@ router.delete('/problems/:problemId/testcases/:tcId', [auth, admin], async (req,
 
 
 
-router.get('/:id', auth, async (req, res) => {
+router.get('/:id', auth, verifyGate, async (req, res) => {
     try {
         const duel = await Duel.findById(req.params.id)
             .populate('players', 'username')
@@ -212,7 +213,7 @@ router.get('/:id', auth, async (req, res) => {
 });
 
 
-router.post('/:id/run', auth, async (req, res) => {
+router.post('/:id/run', auth, verifyGate, async (req, res) => {
     try {
         const { code, language } = req.body;
         if (!code || !language) {
@@ -253,7 +254,7 @@ router.post('/:id/run', auth, async (req, res) => {
 });
 
 
-router.post('/:id/submit', auth, async (req, res) => {
+router.post('/:id/submit', auth, verifyGate, async (req, res) => {
     try {
         const duel = await Duel.findById(req.params.id);
         if (!duel) return res.status(404).json({ message: 'Duel not found' });

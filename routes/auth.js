@@ -80,8 +80,11 @@ router.post('/logout', (req, res) => {
 
 const jwt = require('jsonwebtoken');
 const { auth: protect } = require('../middleware/auth');
+const verifyGate = require('../middleware/verifyGate');
 
-router.get('/socket-token', protect, async (req, res) => {
+// We apply verifyGate BEFORE issuing a socket token!
+// This stops unverified users from connecting to the socket at all.
+router.get('/socket-token', protect, verifyGate, async (req, res) => {
   try {
     const token = jwt.sign(
       { 

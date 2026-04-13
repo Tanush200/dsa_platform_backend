@@ -1,13 +1,14 @@
 const express = require('express');
 const router = express.Router();
 const { auth, admin } = require('../middleware/auth');
+const verifyGate = require('../middleware/verifyGate');
 const SurvivalQuestion = require('../models/SurvivalQuestion');
 const SurvivalDuel = require('../models/SurvivalDuel');
 const DuelProfile = require('../models/DuelProfile');
 const { setCache, noCache } = require('../middleware/cache');
 
 
-router.get('/questions', [auth, setCache(600)], async (req, res) => {
+router.get('/questions', [auth, verifyGate, setCache(600)], async (req, res) => {
     try {
         const page = parseInt(req.query.page) || 1;
         const limit = parseInt(req.query.limit) || 50;
@@ -34,7 +35,7 @@ router.get('/questions', [auth, setCache(600)], async (req, res) => {
 
 
 
-router.post('/questions', [auth, admin], async (req, res) => {
+router.post('/questions', [auth, verifyGate, admin], async (req, res) => {
     try {
         const question = new SurvivalQuestion(req.body);
         await question.save();
@@ -46,7 +47,7 @@ router.post('/questions', [auth, admin], async (req, res) => {
 });
 
 
-router.patch('/questions/:id/toggle', [auth, admin], async (req, res) => {
+router.patch('/questions/:id/toggle', [auth, verifyGate, admin], async (req, res) => {
     try {
         const question = await SurvivalQuestion.findById(req.params.id);
         if (!question) return res.status(404).json({ message: 'Question not found' });
@@ -60,7 +61,7 @@ router.patch('/questions/:id/toggle', [auth, admin], async (req, res) => {
 });
 
 
-router.get('/history', [auth, noCache], async (req, res) => {
+router.get('/history', [auth, verifyGate, noCache], async (req, res) => {
     try {
         const duels = await SurvivalDuel.find({ 'players.user': req.user.id, status: 'finished' })
             .sort({ finishedAt: -1 })
@@ -76,7 +77,7 @@ router.get('/history', [auth, noCache], async (req, res) => {
 });
 
 
-router.get('/duel/:id', auth, async (req, res) => {
+router.get('/duel/:id', auth, verifyGate, async (req, res) => {
     try {
         const duel = await SurvivalDuel.findById(req.params.id)
             .populate('players.user', 'username')
@@ -115,7 +116,7 @@ router.get('/leaderboard', [auth, setCache(300)], async (req, res) => {
 });
 
 
-router.get('/my-profile', [auth, noCache], async (req, res) => {
+router.get('/my-profile', [auth, verifyGate, noCache], async (req, res) => {
     try {
         let profile = await DuelProfile.findOne({ user: req.user.id })
             .select('-survivalSeenQuestions')
