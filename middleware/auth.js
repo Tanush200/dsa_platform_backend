@@ -27,6 +27,7 @@ async function auth(req, res, next) {
 
     req.user = {
       id: user._id,
+      _id: user._id, // Adding for backward compatibility
       uid: decodedToken.uid,
       email: decodedToken.email,
       role: user.role,
