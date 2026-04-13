@@ -79,7 +79,7 @@ router.post('/logout', (req, res) => {
 });
 
 const jwt = require('jsonwebtoken');
-const { protect } = require('../middleware/auth');
+const { auth: protect } = require('../middleware/auth');
 
 router.get('/socket-token', protect, async (req, res) => {
   try {
