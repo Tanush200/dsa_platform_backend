@@ -107,9 +107,11 @@ router.put('/email', auth, async (req, res) => {
       { returnDocument: 'after' }
     ).select('-password');
 
-    // Send new verification email
+    // Send new verification email (Non-blocking background task)
     const { sendVerificationEmail } = require('../services/emailService');
-    await sendVerificationEmail(email, verificationToken, user.username);
+    sendVerificationEmail(email, verificationToken, user.username).catch(err => {
+      console.error("Background SES Error during email update:", err);
+    });
 
     res.json({
       message: 'Email updated! Please verify your new email address.',
