@@ -77,16 +77,20 @@ app.use(pinoHttp({
         )
       )
     }),
-    res: (res) => ({
-      statusCode: res.statusCode,
-      headers: Object.fromEntries(
-        Object.entries(res.getHeaders()).filter(([key]) => 
-          !['strict-transport-security', 'x-content-type-options', 'x-dns-prefetch-control', 
-            'x-download-options', 'x-frame-options', 'x-permitted-cross-domain-policies', 
-            'x-xss-protection', 'vary', 'access-control-allow-credentials', 'etag', 'x-ratelimit-limit', 'x-ratelimit-remaining', 'x-ratelimit-reset'].includes(key)
+    res: (res) => {
+      const headers = (typeof res.getHeaders === 'function') ? res.getHeaders() : (res.headers || res._headers || {});
+      return {
+        statusCode: res.statusCode,
+        headers: Object.fromEntries(
+          Object.entries(headers).filter(([key]) => 
+            !['strict-transport-security', 'x-content-type-options', 'x-dns-prefetch-control', 
+              'x-download-options', 'x-frame-options', 'x-permitted-cross-domain-policies', 
+              'x-xss-protection', 'vary', 'access-control-allow-credentials', 'etag', 'x-ratelimit-limit', 'x-ratelimit-remaining', 'x-ratelimit-reset'].includes(key)
+          )
         )
-      )
-    })
+      };
+    }
+
   },
   redact: ['req.headers.authorization', 'req.headers.cookie', 'res.headers["set-cookie"]'],
   autoLogging: {
