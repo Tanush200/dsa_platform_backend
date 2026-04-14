@@ -64,6 +64,30 @@ const botPatterns = [
 
 app.use(pinoHttp({
   logger,
+  serializers: {
+    req: (req) => ({
+      id: req.id,
+      method: req.method,
+      url: req.url,
+      query: req.query,
+      remoteAddress: req.remoteAddress,
+      headers: Object.fromEntries(
+        Object.entries(req.headers).filter(([key]) => 
+          !['authorization', 'cookie', 'x-forwarded-for', 'x-real-ip', 'connection', 'accept-encoding', 'upgrade-insecure-requests'].includes(key)
+        )
+      )
+    }),
+    res: (res) => ({
+      statusCode: res.statusCode,
+      headers: Object.fromEntries(
+        Object.entries(res.getHeaders()).filter(([key]) => 
+          !['strict-transport-security', 'x-content-type-options', 'x-dns-prefetch-control', 
+            'x-download-options', 'x-frame-options', 'x-permitted-cross-domain-policies', 
+            'x-xss-protection', 'vary', 'access-control-allow-credentials', 'etag', 'x-ratelimit-limit', 'x-ratelimit-remaining', 'x-ratelimit-reset'].includes(key)
+        )
+      )
+    })
+  },
   redact: ['req.headers.authorization', 'req.headers.cookie', 'res.headers["set-cookie"]'],
   autoLogging: {
     ignore: (req) => botPatterns.some(p => p.test(req.path))
@@ -74,6 +98,7 @@ app.use(pinoHttp({
     return 'silent';
   }
 }));
+
 app.use(compression());
 app.use(helmet());
 
