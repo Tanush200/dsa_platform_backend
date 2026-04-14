@@ -11,7 +11,10 @@ const SurvivalDuelSchema = new mongoose.Schema({
     status: { type: String, enum: ['waiting', 'active', 'finished'], default: 'waiting', index: true },
     winner: { type: mongoose.Schema.Types.ObjectId, ref: 'User' },
     startedAt: { type: Date },
-    finishedAt: { type: Date }
+    finishedAt: { type: Date, index: true }
 }, { timestamps: true });
+
+SurvivalDuelSchema.index({ 'players.user': 1, status: 1 });
+SurvivalDuelSchema.index({ finishedAt: -1 });
 
 module.exports = mongoose.model('SurvivalDuel', SurvivalDuelSchema);

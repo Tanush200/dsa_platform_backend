@@ -1,5 +1,6 @@
 const admin = require('../lib/firebaseAdmin');
 const User = require('../models/User');
+const { getJson, setJson } = require('../services/redis');
 
 async function auth(req, res, next) {
   const token = req.header('Authorization')?.split(' ')[1];
@@ -32,9 +33,20 @@ async function auth(req, res, next) {
       decodedToken = await admin.auth().verifyIdToken(token);
     }
 
-    let user = await User.findOne({
-      $or: [{ firebaseUid: decodedToken.uid }, { email: decodedToken.email }]
-    });
+    // ⚡ Session Cache Strategy
+    const cacheKey = `user:session:${decodedToken.uid}`;
+    let user = await getJson(cacheKey);
+
+    if (!user) {
+      user = await User.findOne({
+        $or: [{ firebaseUid: decodedToken.uid }, { email: decodedToken.email }]
+      }).lean(); // Lean for performance
+
+      if (user) {
+        // Cache for 10 minutes to balance performance and freshness
+        await setJson(cacheKey, user, 600).catch(() => {});
+      }
+    }
 
     if (!user) {
       return res.status(403).json({

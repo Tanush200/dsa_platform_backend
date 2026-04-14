@@ -114,23 +114,27 @@ router.get('/leaderboard', [auth, setCache(300)], async (req, res) => {
         } else {
             const queryPath = `domainStats.${domain}.totalDuels`;
             const sortPath = `domainStats.${domain}.elo`;
-            
+
             total = await DuelProfile.countDocuments({ [queryPath]: { $gt: 0 } });
             topRaw = await DuelProfile.find({ [queryPath]: { $gt: 0 } })
                 .sort({ [sortPath]: -1 })
                 .skip(skip)
                 .limit(limit)
+                .select('user survivalElo survivalRank survivalWins survivalLosses survivalTotalDuels domainStats')
                 .populate('user', 'nickname username')
                 .lean();
         }
 
-        // Normalize response so the frontend doesn't break
         const top = topRaw.map(profile => {
-            if (domain === 'cs') return profile;
-            
+            if (domain === 'cs') {
+                const { domainStats, ...rest } = profile;
+                return rest;
+            }
+
             const stats = profile.domainStats?.[domain] || { elo: 1000, rank: 'Recruit', wins: 0, losses: 0, totalDuels: 0 };
+            const { domainStats, ...rest } = profile;
             return {
-                ...profile,
+                ...rest,
                 survivalElo: stats.elo,
                 survivalRank: stats.rank,
                 survivalWins: stats.wins,
@@ -155,12 +159,11 @@ router.get('/my-profile', [auth, verifyGate, noCache], async (req, res) => {
     try {
         const domain = req.query.domain || 'cs';
         let profile = await DuelProfile.findOne({ user: req.user.id })
-            .select('-survivalSeenQuestions')
+            .select('-survivalSeenQuestions -domainStats.cs.seenQuestions -domainStats.aptitude.seenQuestions -domainStats.gk.seenQuestions -domainStats.ece.seenQuestions -domainStats.me.seenQuestions -domainStats.ce.seenQuestions -domainStats.upsc.seenQuestions')
             .lean();
-            
+
         if (!profile) return res.json({ survivalElo: 1000, survivalRank: 'Recruit', survivalWins: 0, survivalLosses: 0, survivalBestStreak: 0, survivalTotalDuels: 0 });
 
-        // Normalize data to requested domain so frontend logic remains intact
         if (domain !== 'cs') {
             const stats = profile.domainStats?.[domain] || { elo: 1000, rank: 'Recruit', wins: 0, losses: 0, totalDuels: 0, bestStreak: 0 };
             profile = {

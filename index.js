@@ -48,7 +48,9 @@ const io = new Server(server, {
       ? allowedOrigins
       : '*',
     credentials: true
-  }
+  },
+  pingInterval: 10000,
+  pingTimeout: 5000
 });
 
 global.io = io;
@@ -228,7 +230,7 @@ require('./workers/friendlyWorker');
 
 
 mongoose.connect(process.env.MONGODB_URI, {
-  maxPoolSize: 10,
+  maxPoolSize: 50,
   serverSelectionTimeoutMS: 5000,
   socketTimeoutMS: 45000,
 })

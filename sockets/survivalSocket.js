@@ -46,7 +46,6 @@ async function getQuestionsForRank(rank, count = 50, excludeIds = [], domain = '
 
     let finalExcludeIds = excludeIds;
 
-    // 80% Pool Rotation Logic
     if (excludeIds.length >= (totalCount * 0.8) && totalCount > 0) {
         const keepCount = Math.floor(totalCount * 0.2);
         finalExcludeIds = excludeIds.slice(-keepCount);
@@ -56,13 +55,11 @@ async function getQuestionsForRank(rank, count = 50, excludeIds = [], domain = '
         try { return new mongoose.Types.ObjectId(id); } catch (e) { return id; }
     });
 
-    // Attempt 1: Target Rank + Target Domain
     let questions = await SurvivalQuestion.aggregate([
         { $match: { ...getQuery(difficulties, domain), _id: { $nin: ninIds } } },
         { $sample: { size: count } }
     ]);
 
-    // Attempt 2 Fallback: Any Difficulty + STRICTLY Target Domain (if pool is too small)
     if (questions.length < 5) {
         questions = await SurvivalQuestion.aggregate([
             { $match: { active: true, domain: domain, _id: { $nin: ninIds } } },
@@ -70,7 +67,6 @@ async function getQuestionsForRank(rank, count = 50, excludeIds = [], domain = '
         ]);
     }
 
-    // Attempt 3: Infinite Cycle within SAME DOMAIN - Ignore history if still empty
     if (questions.length === 0) {
         questions = await SurvivalQuestion.aggregate([
             { $match: { active: true, domain: domain } },
@@ -368,7 +364,7 @@ async function checkWinConditions(roomId, io, existingDuel = null) {
     if (p1.eliminated && !p2.eliminated) {
         const remainingQ = (p2.questions?.length || 0) - p2.qIndex;
         const maxPossiblePoints = p2.points + (remainingQ * 10);
-        
+
         if (p2.points > p1.points || maxPossiblePoints < p1.points) {
             await endDuel(roomId, p2.points > p1.points ? p2Id : p1Id, io, duel);
         }
@@ -451,12 +447,11 @@ async function startSurvivalDuel(p1, p2, io, domain = 'cs') {
             ]);
         }
 
-        // Ignition Guard: Strict Domain Compliance
         if (!questions1.length || !questions2.length) {
             const errorMsg = `Sector ${domain.toUpperCase()} currently has no available challenges. Try the CS Core.`;
             io.to(p1.socketId).emit('survival:error', { message: errorMsg });
             if (!p2.isBot) io.to(p2.socketId).emit('survival:error', { message: errorMsg });
-            
+
             logger.error(`[Survival] Match Ignition Aborted for ${roomId} - Domain Empty: ${domain}`);
             await SurvivalDuel.findByIdAndDelete(duelModel._id);
             return;
@@ -517,7 +512,6 @@ async function startSurvivalDuel(p1, p2, io, domain = 'cs') {
 
         await addGlobalTimer(roomId, DUEL_MAX_TIME + 3000);
 
-        // Safety timeout: start after 2 seconds no matter what
         setTimeout(() => {
             triggerMatchStart(roomId, io);
         }, 2000);
@@ -530,8 +524,42 @@ module.exports = function attachSurvivalSocket(io) {
     setInterval(async () => {
         for (const domain of DOMAINS) {
             const queueKey = REDIS_QUEUE_PREFIX + domain;
+            const queueData = await redis.lrange(queueKey, 0, 50);
+            if (queueData.length === 0) continue;
 
-            const headStr = await redis.lindex(queueKey, 0);
+            let parsedQueue = queueData.map(item => JSON.parse(item));
+            let matchedUserIds = new Set();
+
+            for (let i = 0; i < parsedQueue.length - 1; i++) {
+                if (matchedUserIds.has(parsedQueue[i].userId)) continue;
+
+                const p1 = parsedQueue[i];
+                const timeInQueue = Date.now() - p1.joinedAt;
+
+                const allowedGap = timeInQueue > 10000 ? 2000 : (timeInQueue > 5000 ? 300 : 100);
+
+                for (let j = i + 1; j < parsedQueue.length; j++) {
+                    if (matchedUserIds.has(parsedQueue[j].userId)) continue;
+
+                    const p2 = parsedQueue[j];
+                    if (Math.abs(p1.elo - p2.elo) <= allowedGap) {
+                        matchedUserIds.add(p1.userId);
+                        matchedUserIds.add(p2.userId);
+
+                        await redis.multi()
+                            .lrem(queueKey, 0, queueData[i])
+                            .lrem(queueKey, 0, queueData[j])
+                            .exec();
+
+                        await startSurvivalDuel(p1, p2, io, domain);
+                        logger.debug(`[Survival] Human Match: ${p1.username} vs ${p2.username} in ${domain}`);
+                        break;
+                    }
+                }
+            }
+
+            const finalQueueData = await redis.lrange(queueKey, 0, 0);
+            const headStr = finalQueueData[0];
             if (headStr) {
                 const head = JSON.parse(headStr);
                 if (Date.now() - head.joinedAt > 12000) {
@@ -543,41 +571,8 @@ module.exports = function attachSurvivalSocket(io) {
                             username: botName,
                             isBot: true
                         }, io, domain);
-                        continue;
+                        logger.debug(`[Survival] Bot Match for ${head.username} in ${domain}`);
                     }
-                }
-            }
-
-            const queueData = await redis.lrange(queueKey, 0, 50);
-            if (queueData.length < 2) continue;
-
-            let parsedQueue = queueData.map(item => JSON.parse(item));
-            let i = 0;
-            while (i < parsedQueue.length - 1) {
-                const p1 = parsedQueue[i];
-                const timeInQueue = Date.now() - p1.joinedAt;
-                const allowedGap = timeInQueue > 10000 ? 600 : (timeInQueue > 5000 ? 300 : 100);
-
-                let matchedIdx = -1;
-                for (let j = i + 1; j < parsedQueue.length; j++) {
-                    const p2 = parsedQueue[j];
-                    if (Math.abs(p1.elo - p2.elo) <= allowedGap) {
-                        matchedIdx = j;
-                        break;
-                    }
-                }
-
-                if (matchedIdx !== -1) {
-                    const p2 = parsedQueue[matchedIdx];
-                    await redis.multi()
-                        .lrem(queueKey, 0, queueData[i])
-                        .lrem(queueKey, 0, queueData[matchedIdx])
-                        .exec();
-
-                    await startSurvivalDuel(p1, p2, io, domain);
-                    break;
-                } else {
-                    i++;
                 }
             }
         }
@@ -612,6 +607,7 @@ module.exports = function attachSurvivalSocket(io) {
 
     io.on('connection', (socket) => {
         if (!socket.userId) return;
+        socket.join(socket.userId);
 
         socket.on('survival:joinQueue', async (data) => {
             const domain = data?.domain || 'cs';
@@ -674,7 +670,7 @@ module.exports = function attachSurvivalSocket(io) {
 
             p.isDisconnected = false;
             p.socketId = socket.id;
-            p.isReady = true; // Mark as landed in arena
+            p.isReady = true;
             socket.roomId = roomId;
 
             duel.players[uid] = p;
@@ -682,13 +678,13 @@ module.exports = function attachSurvivalSocket(io) {
 
             socket.join(roomId);
 
-            // Reactive Start: If both are ready, start immediately
+
             const allPlayers = Object.values(duel.players);
             const allReady = allPlayers.every(pl => pl.isBot || pl.isReady);
 
             if (allReady && !duel.matchStarted) {
                 await triggerMatchStart(roomId, io);
-                return; // triggerMatchStart already sends state and question
+                return;
             }
 
             io.to(roomId).emit('survival:stateUpdate', { players: serializePlayers(duel.players), globalTimerEnd: duel.globalTimerEnd });

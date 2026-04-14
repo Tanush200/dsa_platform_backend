@@ -157,15 +157,15 @@ const worker = new Worker('survivalQueue', async (job) => {
                     await prof.save();
 
                     if (global.io) {
-                        const userSocketId = p.socketId;
-                        if (userSocketId) {
+                        const targetRoom = String(uid);
+                        if (targetRoom) {
                             let emittedRank = prof.survivalRank;
                             if (domain !== 'cs' && prof.domainStats) {
                                 const st = prof.domainStats.get(domain);
                                 if (st) emittedRank = st.rank;
                             }
 
-                            global.io.to(userSocketId).emit('survival:eloUpdate', {
+                            global.io.to(targetRoom).emit('survival:eloUpdate', {
                                 newElo,
                                 delta,
                                 rank: emittedRank,
@@ -179,7 +179,7 @@ const worker = new Worker('survivalQueue', async (job) => {
             console.error('[Survival Worker] Save Match error:', err);
         }
     }
-}, { connection });
+}, { connection, concurrency: 10 });
 
 worker.on('error', (err) => console.error('BullMQ error:', err));
 

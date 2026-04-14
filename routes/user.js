@@ -7,6 +7,7 @@ router.use(noCache);
 
 const User = require('../models/User');
 const { auth } = require('../middleware/auth');
+const { del } = require('../services/redis');
 
 router.get('/me', auth, async (req, res) => {
   try {
@@ -20,19 +21,19 @@ router.get('/me', auth, async (req, res) => {
 router.get('/solve-history', auth, async (req, res) => {
   try {
     const user = await User.findById(req.user.id).select('solveHistory currentStreak maxStreak lastSolvedDate');
-    
+
     if (user && user.lastSolvedDate && user.currentStreak > 0) {
       const istNow = new Date();
       const istTodayStr = istNow.toLocaleDateString('en-CA', { timeZone: 'Asia/Kolkata' });
-      
+
       const lastSolved = new Date(user.lastSolvedDate);
       const lastSolvedStr = lastSolved.toLocaleDateString('en-CA', { timeZone: 'Asia/Kolkata' });
-      
+
       if (istTodayStr !== lastSolvedStr) {
         const yesterday = new Date(istNow);
         yesterday.setDate(yesterday.getDate() - 1);
         const istYesterdayStr = yesterday.toLocaleDateString('en-CA', { timeZone: 'Asia/Kolkata' });
-        
+
         if (lastSolvedStr !== istYesterdayStr) {
           user.currentStreak = 0;
           await user.save();
@@ -76,6 +77,9 @@ router.put('/nickname', auth, async (req, res) => {
       { nickname },
       { returnDocument: 'after' }
     ).select('-password');
+    if (user) {
+      await del(`user:session:${req.user.uid}`).catch(() => { });
+    }
 
     res.json(user);
   } catch (err) {
@@ -90,7 +94,6 @@ router.put('/email', auth, async (req, res) => {
       return res.status(400).json({ message: 'Valid email is required' });
     }
 
-    // Check if email already taken
     const existingUser = await User.findOne({ email, _id: { $ne: req.user.id } });
     if (existingUser) {
       return res.status(400).json({ message: 'Email already in use' });
@@ -106,8 +109,10 @@ router.put('/email', auth, async (req, res) => {
       },
       { returnDocument: 'after' }
     ).select('-password');
+    if (user) {
+      await del(`user:session:${req.user.uid}`).catch(() => { });
+    }
 
-    // Send new verification email (Non-blocking background task)
     const { sendVerificationEmail } = require('../services/emailService');
     sendVerificationEmail(email, verificationToken, user.username).catch(err => {
       console.error("Background SES Error during email update:", err);
