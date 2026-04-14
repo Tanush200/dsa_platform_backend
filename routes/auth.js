@@ -68,6 +68,15 @@ router.post('/register', async (req, res) => {
       user: { id: user._id, username: user.username, email: user.email }
     });
   } catch (error) {
+    if (error.code === 11000) {
+      const existing = await User.findOne({ firebaseUid: req.body.firebaseUid });
+      if (existing) {
+        return res.json({
+          message: 'Identity confirmed. Welcome back, Survivor.',
+          user: { id: existing._id, username: existing.username, email: existing.email }
+        });
+      }
+    }
     console.error("Registration sync error:", error);
     res.status(500).json({ error: 'Failed to sync identity profile.' });
   }
@@ -87,10 +96,10 @@ const verifyGate = require('../middleware/verifyGate');
 router.get('/socket-token', protect, verifyGate, async (req, res) => {
   try {
     const token = jwt.sign(
-      { 
-        id: req.user._id, 
+      {
+        id: req.user._id,
         username: req.user.username,
-        type: 'socket_admission' 
+        type: 'socket_admission'
       },
       process.env.JWT_SECRET,
       { expiresIn: '1h' }
