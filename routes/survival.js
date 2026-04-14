@@ -14,7 +14,10 @@ router.get('/questions', [auth, verifyGate, setCache(600)], async (req, res) => 
         const limit = parseInt(req.query.limit) || 50;
         const skip = (page - 1) * limit;
 
-        const query = req.user.role === 'admin' ? {} : { active: true };
+        const query = {
+            ...(req.query.domain && { domain: req.query.domain }),
+            ...(req.user.role !== 'admin' && { active: true })
+        };
 
         const total = await SurvivalQuestion.countDocuments(query);
         const questions = await SurvivalQuestion.find(query)

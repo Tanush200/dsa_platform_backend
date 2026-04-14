@@ -36,17 +36,18 @@ const RANK_DIFFICULTY = {
 async function getQuestionsForRank(rank, count = 50, excludeIds = [], domain = 'cs') {
     const difficulties = RANK_DIFFICULTY[rank] || ['Easy'];
 
-    const totalCount = await SurvivalQuestion.countDocuments({
+    const getQuery = (diffArr, targetDomain) => ({
         active: true,
-        difficulty: { $in: difficulties },
-        domain: domain
+        difficulty: { $in: diffArr },
+        domain: targetDomain
     });
+
+    const totalCount = await SurvivalQuestion.countDocuments(getQuery(difficulties, domain));
 
     let finalExcludeIds = excludeIds;
 
-    if (excludeIds.length >= (totalCount * 0.8)) {
-        console.log(`[Survival] Pool exhausted > 80% for rank ${rank}. Rotating history.`);
-
+    // 80% Pool Rotation Logic
+    if (excludeIds.length >= (totalCount * 0.8) && totalCount > 0) {
         const keepCount = Math.floor(totalCount * 0.2);
         finalExcludeIds = excludeIds.slice(-keepCount);
     }
@@ -55,17 +56,29 @@ async function getQuestionsForRank(rank, count = 50, excludeIds = [], domain = '
         try { return new mongoose.Types.ObjectId(id); } catch (e) { return id; }
     });
 
-    return await SurvivalQuestion.aggregate([
-        {
-            $match: {
-                active: true,
-                difficulty: { $in: difficulties },
-                _id: { $nin: ninIds },
-                domain: domain
-            }
-        },
+    // Attempt 1: Target Rank + Target Domain
+    let questions = await SurvivalQuestion.aggregate([
+        { $match: { ...getQuery(difficulties, domain), _id: { $nin: ninIds } } },
         { $sample: { size: count } }
     ]);
+
+    // Attempt 2 Fallback: Any Difficulty + STRICTLY Target Domain (if pool is too small)
+    if (questions.length < 5) {
+        questions = await SurvivalQuestion.aggregate([
+            { $match: { active: true, domain: domain, _id: { $nin: ninIds } } },
+            { $sample: { size: count } }
+        ]);
+    }
+
+    // Attempt 3: Infinite Cycle within SAME DOMAIN - Ignore history if still empty
+    if (questions.length === 0) {
+        questions = await SurvivalQuestion.aggregate([
+            { $match: { active: true, domain: domain } },
+            { $sample: { size: count } }
+        ]);
+    }
+
+    return questions;
 }
 
 const BOT_NAMES = [
@@ -96,7 +109,8 @@ function serializePlayers(players) {
             qIndex: p.qIndex,
             qCount: p.questions?.length || 0,
             isConnected: p.isBot ? true : !p.isDisconnected,
-            isBot: !!p.isBot
+            isBot: !!p.isBot,
+            rank: p.rank
         };
     }
     return result;
@@ -336,6 +350,7 @@ async function checkWinConditions(roomId, io, existingDuel = null) {
         globalTimerEnd: duel.globalTimerEnd
     });
 
+    // Case 1: Both strictly finished or eliminated
     if (p1.eliminated && p2.eliminated) {
         let winner = null;
         if (p1.points > p2.points) winner = p1Id;
@@ -349,14 +364,20 @@ async function checkWinConditions(roomId, io, existingDuel = null) {
         return;
     }
 
+    // Case 2: Mathematical Victory or Early Closure
     if (p1.eliminated && !p2.eliminated) {
-        if (p2.points > p1.points) {
-            await endDuel(roomId, p2Id, io, duel);
+        const remainingQ = (p2.questions?.length || 0) - p2.qIndex;
+        const maxPossiblePoints = p2.points + (remainingQ * 10);
+        
+        if (p2.points > p1.points || maxPossiblePoints < p1.points) {
+            await endDuel(roomId, p2.points > p1.points ? p2Id : p1Id, io, duel);
         }
-
     } else if (p2.eliminated && !p1.eliminated) {
-        if (p1.points > p2.points) {
-            await endDuel(roomId, p1Id, io, duel);
+        const remainingQ = (p1.questions?.length || 0) - p1.qIndex;
+        const maxPossiblePoints = p1.points + (remainingQ * 10);
+
+        if (p1.points > p2.points || maxPossiblePoints < p2.points) {
+            await endDuel(roomId, p1.points > p2.points ? p1Id : p2Id, io, duel);
         }
     }
 }
@@ -423,14 +444,22 @@ async function startSurvivalDuel(p1, p2, io, domain = 'cs') {
 
             questions1 = await getQuestionsForRank(rank1, 100, combinedExcludes, domain);
             questions2 = [...questions1];
-
-            // console.log(`[Survival] Fair Play match: ${p1.username} vs ${p2.username} using shared pool.`);
         } else {
             [questions1, questions2] = await Promise.all([
                 getQuestionsForRank(rank1, 100, prof1?.survivalSeenQuestions || [], domain),
                 getQuestionsForRank(rank2, 100, p2.isBot ? [] : (prof2?.survivalSeenQuestions || []), domain)
             ]);
+        }
 
+        // Ignition Guard: Strict Domain Compliance
+        if (!questions1.length || !questions2.length) {
+            const errorMsg = `Sector ${domain.toUpperCase()} currently has no available challenges. Try the CS Core.`;
+            io.to(p1.socketId).emit('survival:error', { message: errorMsg });
+            if (!p2.isBot) io.to(p2.socketId).emit('survival:error', { message: errorMsg });
+            
+            logger.error(`[Survival] Match Ignition Aborted for ${roomId} - Domain Empty: ${domain}`);
+            await SurvivalDuel.findByIdAndDelete(duelModel._id);
+            return;
         }
 
         const updateHistory = async (prof, questions) => {
@@ -487,7 +516,7 @@ async function startSurvivalDuel(p1, p2, io, domain = 'cs') {
         });
 
         await addGlobalTimer(roomId, DUEL_MAX_TIME + 3000);
-        
+
         // Safety timeout: start after 2 seconds no matter what
         setTimeout(() => {
             triggerMatchStart(roomId, io);
@@ -656,7 +685,7 @@ module.exports = function attachSurvivalSocket(io) {
             // Reactive Start: If both are ready, start immediately
             const allPlayers = Object.values(duel.players);
             const allReady = allPlayers.every(pl => pl.isBot || pl.isReady);
-            
+
             if (allReady && !duel.matchStarted) {
                 await triggerMatchStart(roomId, io);
                 return; // triggerMatchStart already sends state and question
