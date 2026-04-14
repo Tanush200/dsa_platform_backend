@@ -104,6 +104,19 @@ function serializePlayers(players) {
 
 
 
+async function triggerMatchStart(roomId, io) {
+    const duel = await getJson(REDIS_DUEL_PREFIX + roomId);
+    if (!duel || duel.matchStarted) return;
+
+    duel.matchStarted = true;
+    await setJson(REDIS_DUEL_PREFIX + roomId, duel);
+
+    const pIds = Object.keys(duel.players);
+    for (const uid of pIds) {
+        await nextQuestion(roomId, uid, io);
+    }
+}
+
 async function handleGlobalTimeOut(roomId, io) {
     if (!await acquireLock(roomId)) return;
 
@@ -452,12 +465,13 @@ async function startSurvivalDuel(p1, p2, io, domain = 'cs') {
             duelId: duelModel._id,
             domain,
             globalTimerEnd,
+            matchStarted: false,
             players: {
-                [p1Id]: { username: p1.username, points: 0, streak: 0, bestStreak: 0, lives: 4, eliminated: false, socketId: p1.socketId, qIndex: 0, questions: questions1, rank: rank1, isDisconnected: false, isBot: false },
+                [p1Id]: { username: p1.username, points: 0, streak: 0, bestStreak: 0, lives: 4, eliminated: false, socketId: p1.socketId, qIndex: 0, questions: questions1, rank: rank1, isDisconnected: false, isBot: false, isReady: false },
                 [p2Id]: {
                     username: p2.username, points: 0, streak: 0, bestStreak: 0, lives: 4, eliminated: false,
                     socketId: p2.socketId, qIndex: 0, questions: questions2, rank: rank2,
-                    isDisconnected: false, isBot: !!p2.isBot
+                    isDisconnected: false, isBot: !!p2.isBot, isReady: !!p2.isBot
                 }
             },
         };
@@ -473,10 +487,11 @@ async function startSurvivalDuel(p1, p2, io, domain = 'cs') {
         });
 
         await addGlobalTimer(roomId, DUEL_MAX_TIME + 3000);
+        
+        // Safety timeout: start after 2 seconds no matter what
         setTimeout(() => {
-            nextQuestion(roomId, p1Id, io);
-            nextQuestion(roomId, p2Id, io);
-        }, 10000);
+            triggerMatchStart(roomId, io);
+        }, 2000);
     } catch (err) { logger.error(err, "Match error"); }
 }
 
@@ -630,12 +645,23 @@ module.exports = function attachSurvivalSocket(io) {
 
             p.isDisconnected = false;
             p.socketId = socket.id;
+            p.isReady = true; // Mark as landed in arena
             socket.roomId = roomId;
 
             duel.players[uid] = p;
             await setJson(REDIS_DUEL_PREFIX + roomId, duel);
 
             socket.join(roomId);
+
+            // Reactive Start: If both are ready, start immediately
+            const allPlayers = Object.values(duel.players);
+            const allReady = allPlayers.every(pl => pl.isBot || pl.isReady);
+            
+            if (allReady && !duel.matchStarted) {
+                await triggerMatchStart(roomId, io);
+                return; // triggerMatchStart already sends state and question
+            }
+
             io.to(roomId).emit('survival:stateUpdate', { players: serializePlayers(duel.players), globalTimerEnd: duel.globalTimerEnd });
 
             if (!p.eliminated) {
@@ -643,7 +669,8 @@ module.exports = function attachSurvivalSocket(io) {
                 if (q) {
                     io.to(socket.id).emit('survival:question', {
                         index: p.qIndex, questionText: q.questionText, codeSnippet: q.codeSnippet,
-                        options: q.options, type: q.type, difficulty: q.difficulty, points: q.points, timeLimit: TIME_PER_QUESTION
+                        options: q.options, type: q.type, difficulty: q.difficulty, points: q.points, timeLimit: TIME_PER_QUESTION,
+                        domain: q.domain || 'cs'
                     });
                 }
             }
