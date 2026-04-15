@@ -19,11 +19,10 @@ const ReferralSchema = new mongoose.Schema({
   }
 }, { timestamps: true });
 
-ReferralSchema.pre('save', function (next) {
+ReferralSchema.pre('save', async function () {
   if (this.referrer.toString() === this.referred.toString()) {
-    return next(new Error('Self-referral is not allowed.'));
+    throw new Error('Self-referral is not allowed.');
   }
-  next();
 });
 
 module.exports = mongoose.model('Referral', ReferralSchema);
