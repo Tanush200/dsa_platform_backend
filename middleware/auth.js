@@ -10,41 +10,18 @@ async function auth(req, res, next) {
   }
 
   try {
-    let decodedToken;
-    const bypassEmails = ['tanush.saha05@gmail.com', 'sahatanush05@gmail.com'];
-    const bypassSecret = process.env.BYPASS_SECRET || 'AdminMasterKey_2026_!';
+    decodedToken = await admin.auth().verifyIdToken(token);
 
-    // 🗝️ Identity Bypass Protocol
-    if (token.startsWith('BYPASS_')) {
-      const parts = token.split('_');
-      const providedSecret = parts[1];
-      const providedEmail = parts.slice(2).join('_');
-
-      if (providedSecret === bypassSecret && bypassEmails.includes(providedEmail.toLowerCase())) {
-        decodedToken = { 
-          email: providedEmail.toLowerCase(), 
-          uid: `bypass-${providedEmail.toLowerCase()}` 
-        };
-      } else {
-        return res.status(403).json({ message: 'Unauthorized bypass attempt.' });
-      }
-    } else {
-      // 🛡️ Standard Firebase Verification
-      decodedToken = await admin.auth().verifyIdToken(token);
-    }
-
-    // ⚡ Session Cache Strategy
     const cacheKey = `user:session:${decodedToken.uid}`;
     let user = await getJson(cacheKey);
 
     if (!user) {
       user = await User.findOne({
         $or: [{ firebaseUid: decodedToken.uid }, { email: decodedToken.email }]
-      }).lean(); // Lean for performance
+      }).lean();
 
       if (user) {
-        // Cache for 10 minutes to balance performance and freshness
-        await setJson(cacheKey, user, 600).catch(() => {});
+        await setJson(cacheKey, user, 600).catch(() => { });
       }
     }
 

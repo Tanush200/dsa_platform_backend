@@ -124,7 +124,37 @@ function formatQ(q, index) {
     };
 }
 
+const jwt = require('jsonwebtoken');
+
 module.exports = function attachFriendlySocket(io) {
+    io.use(async (socket, next) => {
+        try {
+            const token =
+                socket.handshake.auth?.token ||
+                socket.handshake.query?.token;
+            if (!token) return next(new Error('Authentication required'));
+
+            const secret = process.env.JWT_SECRET;
+            if (!secret) return next(new Error('Internal Security Error: Missing Key'));
+            const decoded = jwt.verify(token, secret);
+
+            if (decoded.type !== 'socket_admission') {
+                return next(new Error('Invalid token type for socket access'));
+            }
+
+            const User = require('../models/User');
+            const user = await User.findById(decoded.id);
+            if (!user) return next(new Error('User identity not found in registry'));
+            if (!user.isVerified) return next(new Error('Identity verification required'));
+
+            socket.userId = decoded.id;
+            socket.username = decoded.username;
+            next();
+        } catch (err) {
+            next(new Error('Invalid token'));
+        }
+    });
+
     io.on('connection', (socket) => {
 
         socket.on('friendly:create', async ({ mode, domain }) => {

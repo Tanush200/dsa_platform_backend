@@ -31,13 +31,11 @@ const allowedOrigins = process.env.CORS_ORIGINS
 logger.info({ allowedOrigins }, "CORS configuration initialized");
 
 
-if (process.env.NODE_ENV === 'production') {
-  const requiredEnv = ['JWT_SECRET', 'MONGODB_URI', 'REDIS_URL'];
-  const missing = requiredEnv.filter(k => !process.env[k]);
-  if (missing.length > 0) {
-    logger.fatal(`FATAL: Missing environment variables: ${missing.join(', ')}`);
-    process.exit(1);
-  }
+const requiredEnv = ['JWT_SECRET', 'MONGODB_URI', 'REDIS_URL'];
+const missing = requiredEnv.filter(k => !process.env[k]);
+if (missing.length > 0) {
+  logger.fatal(`FATAL: Missing critical environment variables: ${missing.join(', ')}. Server induction aborted.`);
+  process.exit(1);
 }
 
 

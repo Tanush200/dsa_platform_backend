@@ -83,7 +83,9 @@ module.exports = function attachDuelSocket(io) {
                 socket.handshake.query?.token;
             if (!token) return next(new Error('Authentication required'));
 
-            const decoded = jwt.verify(token, process.env.JWT_SECRET || 'superDsaSecretKey2026!');
+            const secret = process.env.JWT_SECRET;
+            if (!secret) return next(new Error('Internal Security Error: Missing Key'));
+            const decoded = jwt.verify(token, secret);
 
             if (decoded.type !== 'socket_admission') {
                 return next(new Error('Invalid token type for socket access'));
