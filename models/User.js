@@ -1,4 +1,5 @@
 const mongoose = require('mongoose');
+const crypto = require('crypto');
 
 const UserSchema = new mongoose.Schema({
   username: {
@@ -69,7 +70,28 @@ const UserSchema = new mongoose.Schema({
   solveHistory: [{
     date: { type: String },
     count: { type: Number, default: 0 }
-  }]
+  }],
+  referralCode: {
+    type: String,
+    unique: true,
+    sparse: true,
+    index: true
+  },
+  referredBy: {
+    type: mongoose.Schema.Types.ObjectId,
+    ref: 'User',
+    default: null
+  },
+  referralCount: {
+    type: Number,
+    default: 0
+  }
 }, { timestamps: true });
+
+UserSchema.pre('save', async function () {
+  if (!this.referralCode) {
+    this.referralCode = crypto.randomBytes(4).toString('hex').toUpperCase();
+  }
+});
 
 module.exports = mongoose.model('User', UserSchema);

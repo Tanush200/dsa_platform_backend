@@ -181,6 +181,7 @@ app.use('/api/settings', noCache, require('./routes/settings'));
 app.use('/api/interview', noCache, require('./routes/interview'));
 app.use('/api/duel', require('./routes/duel'));
 app.use('/api/survival', require('./routes/survival'));
+app.use('/api/referral', noCache, require('./routes/referral'));
 
 
 app.all('/*path', (req, res) => {
