@@ -6,6 +6,7 @@ const { noCache } = require('../middleware/cache');
 const User = require('../models/User');
 const { sendVerificationEmail, sendMigrationEmail } = require('../services/emailService');
 const { auth: protect } = require('../middleware/auth');
+const firebaseAdmin = require('../lib/firebaseAdmin');
 const verifyGate = require('../middleware/verifyGate');
 
 router.use(noCache);
@@ -100,6 +101,73 @@ router.post('/login', async (req, res) => {
   } catch (error) {
     console.error("Login error:", error);
     res.status(500).json({ message: 'Authentication failure.' });
+  }
+});
+
+/**
+ * Google Social Login (Firebase Proxy)
+ */
+router.post('/google-login', async (req, res) => {
+  try {
+    const { idToken, referralCode } = req.body;
+    if (!idToken) return res.status(400).json({ message: 'Identity token required.' });
+
+    // 1. Verify token with Firebase
+    const decoded = await firebaseAdmin.verifyIdToken(idToken);
+    const { email, name, picture, uid } = decoded;
+
+    // 2. Find or Create user
+    let user = await User.findOne({ email });
+    let isNewUser = false;
+
+    if (!user) {
+      if (!email) {
+        return res.status(400).json({ message: 'Social profile does not provide a public email. Please check your GitHub/Google privacy settings.' });
+      }
+
+      isNewUser = true;
+      
+      // Handle potential username collisions
+      let baseUsername = name ? name.replace(/\s+/g, '_') : email.split('@')[0];
+      let finalUsername = baseUsername;
+      let counter = 1;
+
+      // Check for existence and append random suffix if needed
+      while (await User.findOne({ username: finalUsername })) {
+        finalUsername = `${baseUsername}_${Math.floor(Math.random() * 9999)}`;
+        counter++;
+        if (counter > 5) break; // Safety break
+      }
+
+      // Create new account for first-time social sign-in
+      user = new User({
+        username: finalUsername,
+        email: email,
+        isVerified: true, // Social accounts are pre-verified
+        firebaseUid: uid,
+        nickname: name || "",
+        referralCode: referralCode
+      });
+      await user.save();
+    } else {
+      // If user exists but is not verified, verify them since Google vouched for them
+      if (!user.isVerified) {
+        user.isVerified = true;
+        await user.save();
+      }
+    }
+
+    // 3. Issue our own JWT
+    const token = jwt.sign({ id: user._id }, process.env.JWT_SECRET, { expiresIn: '7d' });
+
+    res.json({
+      token,
+      isNewUser,
+      user: { id: user._id, username: user.username, email: user.email, isVerified: user.isVerified }
+    });
+  } catch (error) {
+    console.error("Google logic failure:", error);
+    res.status(401).json({ message: 'Identity verification failed. Google rejection.' });
   }
 });
 
