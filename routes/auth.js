@@ -8,6 +8,7 @@ const { sendVerificationEmail, sendMigrationEmail } = require('../services/email
 const { auth: protect } = require('../middleware/auth');
 const firebaseAdmin = require('../lib/firebaseAdmin');
 const verifyGate = require('../middleware/verifyGate');
+const referralService = require('../services/referralService');
 
 router.use(noCache);
 
@@ -145,10 +146,16 @@ router.post('/google-login', async (req, res) => {
         email: email,
         isVerified: true, // Social accounts are pre-verified
         firebaseUid: uid,
-        nickname: name || "",
-        referralCode: referralCode
+        nickname: name || ""
       });
       await user.save();
+
+      // Process referral bonus if a code was provided
+      if (referralCode) {
+        await referralService.processReferral(user, referralCode).catch(err => {
+          console.error('Initial referral processing failed:', err);
+        });
+      }
     } else {
       // If user exists but is not verified, verify them since Google vouched for them
       if (!user.isVerified) {
