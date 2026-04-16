@@ -33,13 +33,23 @@ async function auth(req, res, next) {
       });
     }
 
+    // 🛡️ Automatic Verification Sync
+    // If Firebase says the email is verified but MongoDB doesn't, update MongoDB
+    if (decodedToken.email_verified && !user.isVerified) {
+      await User.findByIdAndUpdate(user._id, { isVerified: true });
+      user.isVerified = true;
+      // Clear cache to ensure local user object is fresh
+      await del(cacheKey).catch(() => {});
+    }
+
     req.user = {
       id: user._id,
       _id: user._id,
       uid: decodedToken.uid,
       email: decodedToken.email,
       role: user.role,
-      username: user.username
+      username: user.username,
+      isVerified: user.isVerified || decodedToken.email_verified
     };
 
     next();

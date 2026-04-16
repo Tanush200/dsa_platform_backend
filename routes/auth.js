@@ -58,7 +58,7 @@ router.post('/register', async (req, res) => {
         email,
         firebaseUid,
         role: 'student',
-        isVerified: true
+        isVerified: false
       });
       await user.save();
     }

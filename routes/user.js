@@ -99,27 +99,21 @@ router.put('/email', auth, async (req, res) => {
       return res.status(400).json({ message: 'Email already in use' });
     }
 
-    const verificationToken = require('uuid').v4();
     const user = await User.findByIdAndUpdate(
       req.user.id,
       {
         email,
         isVerified: false,
-        verificationToken
       },
       { returnDocument: 'after' }
     ).select('-password');
+
     if (user) {
       await del(`user:session:${req.user.uid}`).catch(() => { });
     }
 
-    const { sendVerificationEmail } = require('../services/emailService');
-    sendVerificationEmail(email, verificationToken, user.username).catch(err => {
-      console.error("Background SES Error during email update:", err);
-    });
-
     res.json({
-      message: 'Email updated! Please verify your new email address.',
+      message: 'Uplink updated. Please verify your new address via your dashboard or inbox.',
       user
     });
   } catch (err) {
