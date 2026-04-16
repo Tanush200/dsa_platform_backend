@@ -11,7 +11,7 @@ exports.sendVerificationEmail = async (email, token, username) => {
         const verifyUrl = `${process.env.FRONTEND_URL}/verify-email/${token}`;
         
         await resend.emails.send({
-            from: 'Elix Arena <no-reply@send.elix.it.com>',
+            from: 'Elix Arena <no-reply@elix.it.com>',
             to: email,
             subject: 'Verify your identity - Elix Arena',
             html: `
@@ -27,8 +27,8 @@ exports.sendVerificationEmail = async (email, token, username) => {
         
         logger.info({ email }, 'Verification email sent via Resend');
     } catch (err) {
-        logger.error({ err, email }, 'Failed to send verification email');
-        throw new Error('Email transmission failed.');
+        logger.error({ err: err.message, stack: err.stack, email }, 'Failed to send verification email');
+        throw new Error(`Email transmission failed: ${err.message}`);
     }
 };
 
@@ -38,7 +38,7 @@ exports.sendVerificationEmail = async (email, token, username) => {
 exports.sendMigrationEmail = async (email, tempPassword, username) => {
     try {
         await resend.emails.send({
-            from: 'Elix Arena <no-reply@send.elix.it.com>',
+            from: 'Elix Arena <no-reply@elix.it.com>',
             to: email,
             subject: 'New Access Credentials - Elix Arena',
             html: `
@@ -69,7 +69,7 @@ exports.sendPasswordResetEmail = async (email, token, username) => {
         const resetUrl = `${process.env.FRONTEND_URL}/reset-password/${token}`;
         
         await resend.emails.send({
-            from: 'Elix Arena <no-reply@send.elix.it.com>',
+                from: 'Elix Arena <no-reply@elix.it.com>',
             to: email,
             subject: 'Override Access Protocol - Elix Arena',
             html: `
