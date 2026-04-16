@@ -1,5 +1,6 @@
 const mongoose = require('mongoose');
 const crypto = require('crypto');
+const bcrypt = require('bcryptjs');
 
 const UserSchema = new mongoose.Schema({
   username: {
@@ -37,7 +38,7 @@ const UserSchema = new mongoose.Schema({
   },
   password: {
     type: String,
-    required: false // No longer required for Firebase users
+    required: false
   },
   nickname: {
     type: String,
@@ -88,10 +89,19 @@ const UserSchema = new mongoose.Schema({
   }
 }, { timestamps: true });
 
-UserSchema.pre('save', async function () {
+UserSchema.pre('save', async function (next) {
+  if (this.isModified('password') && this.password) {
+    this.password = await bcrypt.hash(this.password, 10);
+  }
   if (!this.referralCode) {
     this.referralCode = crypto.randomBytes(4).toString('hex').toUpperCase();
   }
+  next();
 });
+
+UserSchema.methods.comparePassword = async function (candidatePassword) {
+  if (!this.password) return false;
+  return bcrypt.compare(candidatePassword, this.password);
+};
 
 module.exports = mongoose.model('User', UserSchema);
