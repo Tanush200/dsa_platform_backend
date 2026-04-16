@@ -1,6 +1,6 @@
 const admin = require('../lib/firebaseAdmin');
 const User = require('../models/User');
-const { getJson, setJson } = require('../services/redis');
+const { getJson, setJson, del } = require('../services/redis');
 
 async function auth(req, res, next) {
   const token = req.header('Authorization')?.split(' ')[1];
