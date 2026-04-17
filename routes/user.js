@@ -122,4 +122,36 @@ router.put('/email', auth, async (req, res) => {
   }
 });
 
+/**
+ * GDPR: Right to Erasure
+ * Purge all user data from the Grid.
+ */
+router.delete('/me', auth, async (req, res) => {
+  try {
+    const userId = req.user.id;
+    
+    // Purge associated data from other collections (Optional but recommended for strict GDPR)
+    const Progress = require('../models/Progress');
+    const DuelProfile = require('../models/DuelProfile');
+    const Referral = require('../models/Referral');
+
+    await Promise.all([
+      Progress.deleteMany({ userId }),
+      DuelProfile.findOneAndDelete({ userId }),
+      Referral.deleteMany({ $or: [{ referrer: userId }, { referred: userId }] }),
+      User.findByIdAndDelete(userId)
+    ]);
+
+    // Clear session cache if exists
+    if (req.user.uid) {
+      await del(`user:session:${req.user.uid}`).catch(() => { });
+    }
+
+    res.json({ message: 'Identity purged from the Arena. Your data has been erased.' });
+  } catch (err) {
+    console.error("Erasure failure:", err);
+    res.status(500).json({ message: 'Failed to purge identity. Critical system error.' });
+  }
+});
+
 module.exports = router;

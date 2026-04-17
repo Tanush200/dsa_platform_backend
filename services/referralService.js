@@ -25,7 +25,7 @@ const normalizeEmail = (email) => {
 const awardElo = async (userId, attempt = 0) => {
   try {
     let profile = await DuelProfile.findOne({ user: userId });
-    
+
     if (!profile) {
       profile = new DuelProfile({
         user: userId,
@@ -44,7 +44,7 @@ const awardElo = async (userId, attempt = 0) => {
         profile.domainStats.set(d, stats);
       });
     }
-    
+
     await profile.save();
   } catch (err) {
     if (err.name === 'VersionError' && attempt < 3) {
@@ -61,20 +61,16 @@ const processReferral = async (referredUser, referralCode) => {
   try {
     if (!referralCode) return { success: false, reason: 'No code provided' };
 
-    // 1. Find Referrer
     const referrer = await User.findOne({ referralCode: referralCode.toUpperCase() });
     if (!referrer) return { success: false, reason: 'Invalid referral code' };
 
-    // 2. Prevent Self-Referral
     if (referrer._id.toString() === referredUser._id.toString()) {
       return { success: false, reason: 'Self-referral detected' };
     }
 
-    // 3. Prevent Duplicate Referral
     const existing = await Referral.findOne({ referred: referredUser._id });
     if (existing) return { success: false, reason: 'Referral already applied' };
 
-    // 4. Basic Fraud Check
     const refEmail = normalizeEmail(referrer.email);
     const userEmail = normalizeEmail(referredUser.email);
     if (refEmail && userEmail && refEmail === userEmail) {
@@ -82,7 +78,6 @@ const processReferral = async (referredUser, referralCode) => {
       return { success: false, reason: 'Account security restriction' };
     }
 
-    // 5. Create Record
     const referral = new Referral({
       referrer: referrer._id,
       referred: referredUser._id,
@@ -90,11 +85,9 @@ const processReferral = async (referredUser, referralCode) => {
     });
     await referral.save();
 
-    // 6. Award Bonuses
     await awardElo(referrer._id);
     await awardElo(referredUser._id);
 
-    // 7. Update User Metadata
     referredUser.referredBy = referrer._id;
     await referredUser.save();
 

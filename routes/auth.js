@@ -29,18 +29,17 @@ router.post('/register', async (req, res) => {
     }
 
     const verificationToken = crypto.randomBytes(32).toString('hex');
-    
+
     const user = new User({
       username,
       email,
-      password, // Will be hashed by pre-save hook
+      password,
       verificationToken,
       isVerified: false
     });
 
     await user.save();
 
-    // Send verification email via Resend
     await sendVerificationEmail(email, verificationToken, username).catch(err => {
       console.error('Initial email failed, user created but unverified:', err);
     });
@@ -58,9 +57,7 @@ router.post('/register', async (req, res) => {
   }
 });
 
-/**
- * Custom Login (JWT Powered)
- */
+
 router.post('/login', async (req, res) => {
   try {
     const { email, password } = req.body;
@@ -70,14 +67,13 @@ router.post('/login', async (req, res) => {
       return res.status(401).json({ message: 'Identity not found in the Grid.' });
     }
 
-    // 🛡️ Legacy Migration Check
     if (!user.password && user.firebaseUid) {
       const tempPass = `ELIX-${crypto.randomBytes(3).toString('hex').toUpperCase()}`;
-      user.password = tempPass; // This will trigger hash in pre-save
+      user.password = tempPass;
       await user.save();
-      
+
       await sendMigrationEmail(email, tempPass, user.username);
-      
+
       return res.status(403).json({
         code: 'MIGRATION_REQUIRED',
         message: 'Legacy account detected. A new Access Secret has been transmitted to your email. Check your inbox.'
@@ -85,7 +81,7 @@ router.post('/login', async (req, res) => {
     }
 
     if (!password) {
-        return res.status(400).json({ message: 'Access Secret required.' });
+      return res.status(400).json({ message: 'Access Secret required.' });
     }
 
     const isMatch = await user.comparePassword(password);
@@ -113,11 +109,9 @@ router.post('/google-login', async (req, res) => {
     const { idToken, referralCode } = req.body;
     if (!idToken) return res.status(400).json({ message: 'Identity token required.' });
 
-    // 1. Verify token with Firebase
     const decoded = await firebaseAdmin.verifyIdToken(idToken);
     const { email, name, picture, uid } = decoded;
 
-    // 2. Find or Create user
     let user = await User.findOne({ email });
     let isNewUser = false;
 
@@ -127,44 +121,38 @@ router.post('/google-login', async (req, res) => {
       }
 
       isNewUser = true;
-      
-      // Handle potential username collisions
+
       let baseUsername = name ? name.replace(/\s+/g, '_') : email.split('@')[0];
       let finalUsername = baseUsername;
       let counter = 1;
 
-      // Check for existence and append random suffix if needed
       while (await User.findOne({ username: finalUsername })) {
         finalUsername = `${baseUsername}_${Math.floor(Math.random() * 9999)}`;
         counter++;
-        if (counter > 5) break; // Safety break
+        if (counter > 5) break;
       }
 
-      // Create new account for first-time social sign-in
       user = new User({
         username: finalUsername,
         email: email,
-        isVerified: true, // Social accounts are pre-verified
+        isVerified: true,
         firebaseUid: uid,
         nickname: name || ""
       });
       await user.save();
 
-      // Process referral bonus if a code was provided
       if (referralCode) {
         await referralService.processReferral(user, referralCode).catch(err => {
           console.error('Initial referral processing failed:', err);
         });
       }
     } else {
-      // If user exists but is not verified, verify them since Google vouched for them
       if (!user.isVerified) {
         user.isVerified = true;
         await user.save();
       }
     }
 
-    // 3. Issue our own JWT
     const token = jwt.sign({ id: user._id }, process.env.JWT_SECRET, { expiresIn: '7d' });
 
     res.json({
@@ -178,9 +166,8 @@ router.post('/google-login', async (req, res) => {
   }
 });
 
-/**
- * Verify Email (Resend Link Handler)
- */
+
+
 router.get('/verify-email/:token', async (req, res) => {
   try {
     const user = await User.findOne({ verificationToken: req.params.token });
@@ -198,9 +185,8 @@ router.get('/verify-email/:token', async (req, res) => {
   }
 });
 
-/**
- * Resend Verification Email
- */
+
+
 router.post('/resend-verification', protect, async (req, res) => {
   try {
     const user = await User.findById(req.user.id);
@@ -218,22 +204,20 @@ router.post('/resend-verification', protect, async (req, res) => {
   }
 });
 
-/**
- * Forgot Password (Request Override)
- */
+
+
 router.post('/forgot-password', async (req, res) => {
   try {
     const { email } = req.body;
     const user = await User.findOne({ email });
-    
+
     if (!user) {
-      // Security: Don't reveal if user exists, but we can log it
       return res.json({ message: 'If an account exists, an override protocol has been transmitted.' });
     }
 
     const resetToken = crypto.randomBytes(32).toString('hex');
     user.resetPasswordToken = resetToken;
-    user.resetPasswordExpires = Date.now() + 3600000; // 1 hour
+    user.resetPasswordExpires = Date.now() + 3600000;
     await user.save();
 
     await sendPasswordResetEmail(email, resetToken, user.username);
@@ -259,7 +243,7 @@ router.post('/reset-password', async (req, res) => {
       return res.status(400).json({ message: 'Override token invalid or expired.' });
     }
 
-    user.password = password; // Will be hashed by pre-save
+    user.password = password;
     user.resetPasswordToken = null;
     user.resetPasswordExpires = null;
     await user.save();
