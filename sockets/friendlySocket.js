@@ -3,6 +3,7 @@ const SurvivalQuestion = require('../models/SurvivalQuestion');
 const Duel = require('../models/Duel');
 const { redis, getJson, setJson, del } = require('../services/redis');
 const { addFriendlyQuestionTimer, addFriendlyEndMatchJob } = require('../services/friendlyQueue');
+const { getPercentile } = require('../services/statsService');
 
 const REDIS_FRIENDLY_PREFIX = 'friendly:duel:';
 
@@ -88,9 +89,16 @@ async function endFriendlyDuel(roomId, io) {
         logger.error(err, '[Friendly] Job Enqueue failed');
     }
 
+    const playerIds = Object.keys(room.players);
+    const percentileResults = {};
+    for (const uid of playerIds) {
+        percentileResults[uid] = await getPercentile(uid, 'casual');
+    }
+
     io.to(roomId).emit('friendly:ended', {
         winnerId,
-        scores: room.scores
+        scores: room.scores,
+        percentileResults
     });
 
     setTimeout(() => del(REDIS_FRIENDLY_PREFIX + roomId), 10 * 60 * 1000);

@@ -13,6 +13,7 @@ const {
 } = require('../services/survivalQueue');
 const { recordSolve } = require('../services/userActivityService');
 const logger = require('../utils/logger');
+const { getPercentile } = require('../services/statsService');
 
 
 
@@ -387,10 +388,19 @@ async function endDuel(roomId, winnerId, io, existingDuel = null) {
         globalTimerEnd: duelData.globalTimerEnd
     });
 
+    const playerIds = Object.keys(duelData.players);
+    const percentileResults = {};
+    for (const uid of playerIds) {
+        if (!duelData.players[uid].isBot) {
+            percentileResults[uid] = await getPercentile(uid, 'survival');
+        }
+    }
+
     io.to(roomId).emit('survival:ended', {
         winnerId,
         domain: duelData.domain || 'cs',
-        players: serializePlayers(duelData.players)
+        players: serializePlayers(duelData.players),
+        percentileResults
     });
 
     try {
