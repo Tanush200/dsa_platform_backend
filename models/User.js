@@ -86,6 +86,17 @@ const UserSchema = new mongoose.Schema({
   referralCount: {
     type: Number,
     default: 0
+  },
+  clanId: {
+    type: mongoose.Schema.Types.ObjectId,
+    ref: 'Clan',
+    default: null,
+    index: true
+  },
+  clanRole: {
+    type: String,
+    enum: ['leader', 'member', null],
+    default: null
   }
 }, { timestamps: true });
 

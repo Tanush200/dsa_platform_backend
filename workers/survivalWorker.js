@@ -6,6 +6,8 @@ const { getJson } = require('../services/redis')
 
 const SurvivalDuel = require('../models/SurvivalDuel');
 const DuelProfile = require('../models/DuelProfile');
+const Clan = require('../models/Clan');
+const User = require('../models/User');
 const mongoose = require('mongoose');
 
 const connection = new Redis(process.env.REDIS_URL || 'redis://localhost:6379', {
@@ -103,7 +105,9 @@ const worker = new Worker('survivalQueue', async (job) => {
                     if (domain === 'cs') {
                         prof.survivalElo = newElo;
                         prof.survivalTotalDuels = (prof.survivalTotalDuels || 0) + 1;
-                        if (score === 1) prof.survivalWins = (prof.survivalWins || 0) + 1;
+                        if (score === 1) {
+                            prof.survivalWins = (prof.survivalWins || 0) + 1;
+                        }
                         else if (score === 0) prof.survivalLosses = (prof.survivalLosses || 0) + 1;
                         prof.survivalBestStreak = Math.max(prof.survivalBestStreak || 0, p.bestStreak);
 
@@ -131,8 +135,19 @@ const worker = new Worker('survivalQueue', async (job) => {
                             const filteredHistory = currentSeen.filter(id => !newSeenIds.includes(id));
                             stats.seenQuestions = [...filteredHistory, ...newSeenIds].slice(-800);
                         }
-                        
+
                         prof.domainStats.set(domain, stats);
+                    }
+
+
+                    if (jobPlayers[uid].points > 0) {
+                        const memberUser = await User.findById(uid).select('clanId');
+                        if (memberUser && memberUser.clanId) {
+                            const reward = jobPlayers[uid].points;
+                            await Clan.findByIdAndUpdate(memberUser.clanId, {
+                                $inc: { weeklyPoints: reward, totalPoints: reward }
+                            });
+                        }
                     }
 
                     const istNow = new Date();

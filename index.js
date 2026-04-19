@@ -9,7 +9,6 @@ const http = require('http');
 const { Server } = require('socket.io');
 const { createAdapter } = require('@socket.io/redis-adapter');
 const Redis = require('ioredis');
-const morgan = require('morgan');
 const compression = require('compression');
 const pinoHttp = require('pino-http');
 const logger = require('./utils/logger');
@@ -180,6 +179,7 @@ app.use('/api/interview', noCache, require('./routes/interview'));
 app.use('/api/duel', require('./routes/duel'));
 app.use('/api/survival', require('./routes/survival'));
 app.use('/api/referral', noCache, require('./routes/referral'));
+app.use('/api/clan', require('./routes/clan'));
 
 
 app.all('/*path', (req, res) => {
@@ -224,8 +224,12 @@ attachSurvivalSocket(io);
 const attachFriendlySocket = require('./sockets/friendlySocket');
 attachFriendlySocket(io);
 
+const attachClanSocket = require('./sockets/clanSocket');
+attachClanSocket(io);
+
 require('./workers/survivalWorker');
 require('./workers/friendlyWorker');
+require('./workers/clanResetWorker');
 
 
 mongoose.connect(process.env.MONGODB_URI, {

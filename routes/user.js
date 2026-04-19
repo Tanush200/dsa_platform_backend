@@ -11,7 +11,9 @@ const { del } = require('../services/redis');
 
 router.get('/me', auth, async (req, res) => {
   try {
-    const user = await User.findById(req.user.id).select('-password -solveHistory');
+    const user = await User.findById(req.user.id)
+      .select('-password -solveHistory')
+      .populate('clanId', 'slug name tag');
     res.json(user);
   } catch (err) {
     res.status(500).json({ message: 'Server error' });
@@ -122,15 +124,12 @@ router.put('/email', auth, async (req, res) => {
   }
 });
 
-/**
- * GDPR: Right to Erasure
- * Purge all user data from the Grid.
- */
+
+
 router.delete('/me', auth, async (req, res) => {
   try {
     const userId = req.user.id;
-    
-    // Purge associated data from other collections (Optional but recommended for strict GDPR)
+
     const Progress = require('../models/Progress');
     const DuelProfile = require('../models/DuelProfile');
     const Referral = require('../models/Referral');
@@ -142,7 +141,6 @@ router.delete('/me', auth, async (req, res) => {
       User.findByIdAndDelete(userId)
     ]);
 
-    // Clear session cache if exists
     if (req.user.uid) {
       await del(`user:session:${req.user.uid}`).catch(() => { });
     }

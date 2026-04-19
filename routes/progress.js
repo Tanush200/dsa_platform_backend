@@ -37,7 +37,12 @@ router.post('/', auth, async (req, res) => {
       const isNewSolve = !progress || progress.status !== 'Solved';
 
       if (isNewSolve) {
-        await recordSolve(req.user.id);
+        let solvePoints = 0;
+        if (difficultyRating === 'Easy') solvePoints = 10;
+        else if (difficultyRating === 'Medium') solvePoints = 30;
+        else if (difficultyRating === 'Hard') solvePoints = 100;
+
+        await recordSolve(req.user.id, 1, solvePoints);
       }
 
 

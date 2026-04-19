@@ -97,7 +97,8 @@ function serializePlayers(players) {
     const result = {};
     for (const [uid, p] of Object.entries(players)) {
         result[uid] = {
-            username: p.nickname || p.username,
+            username: p.username,
+            nickname: p.nickname || '',
             points: p.points,
             streak: p.streak,
             bestStreak: p.bestStreak || 0,
@@ -501,9 +502,9 @@ async function startSurvivalDuel(p1, p2, io, domain = 'cs') {
             globalTimerEnd,
             matchStarted: false,
             players: {
-                [p1Id]: { username: p1.username, points: 0, streak: 0, bestStreak: 0, lives: 4, eliminated: false, socketId: p1.socketId, qIndex: 0, questions: questions1, rank: rank1, isDisconnected: false, isBot: false, isReady: false },
+                [p1Id]: { username: p1.username, nickname: p1.nickname, points: 0, streak: 0, bestStreak: 0, lives: 4, eliminated: false, socketId: p1.socketId, qIndex: 0, questions: questions1, rank: rank1, isDisconnected: false, isBot: false, isReady: false },
                 [p2Id]: {
-                    username: p2.username, points: 0, streak: 0, bestStreak: 0, lives: 4, eliminated: false,
+                    username: p2.username, nickname: p2.nickname, points: 0, streak: 0, bestStreak: 0, lives: 4, eliminated: false,
                     socketId: p2.socketId, qIndex: 0, questions: questions2, rank: rank2,
                     isDisconnected: false, isBot: !!p2.isBot, isReady: !!p2.isBot
                 }
