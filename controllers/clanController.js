@@ -42,6 +42,23 @@ exports.createClan = async (req, res) => {
             return res.status(400).json({ message: 'Name and Tag are required.' });
         }
 
+        if (name.length > 25) {
+            return res.status(400).json({ message: 'Name too long. Maximum 25 characters permitted.' });
+        }
+
+        const tagClean = tag.trim().toUpperCase();
+        if (tagClean.length < 2 || tagClean.length > 5) {
+            return res.status(400).json({ message: 'Tag must be between 2 and 5 characters.' });
+        }
+
+        if (!/^[A-Z0-9]+$/.test(tagClean)) {
+            return res.status(400).json({ message: 'Tag must be alphanumeric (no special symbols).' });
+        }
+
+        if (description && description.length > 200) {
+            return res.status(400).json({ message: 'Description too long. Maximum 200 characters permitted.' });
+        }
+
         const user = await User.findById(userId);
         if (user.clanId) {
             return res.status(400).json({ message: 'You are already in a clan.' });

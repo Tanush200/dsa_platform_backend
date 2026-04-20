@@ -118,9 +118,9 @@ app.use('/api/', globalLimiter);
 
 
 const authLimiter = rateLimit({
-  windowMs: 60 * 60 * 1000,
-  limit: 1000,
-  message: { status: 'fail', message: 'Too many authentication attempts, please try again in an hour' },
+  windowMs: 15 * 60 * 1000,
+  limit: 50,
+  message: { status: 'fail', message: 'Too many authentication attempts, please try again in 15 minutes' },
   standardHeaders: true,
   legacyHeaders: false,
   skip: (req) => process.env.NODE_ENV !== 'production',
