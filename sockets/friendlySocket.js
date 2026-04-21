@@ -110,6 +110,7 @@ function serializeFriendlyPlayers(players) {
         result[uid] = {
             id: uid,
             username: p.username,
+            nickname: p.nickname,
             score: p.score,
             qIndex: p.qIndex,
             ready: p.ready,
@@ -157,6 +158,7 @@ module.exports = function attachFriendlySocket(io) {
 
             socket.userId = decoded.id;
             socket.username = decoded.username;
+            socket.nickname = user.nickname;
             next();
         } catch (err) {
             next(new Error('Invalid token'));
@@ -182,6 +184,7 @@ module.exports = function attachFriendlySocket(io) {
                 players: {
                     [socket.userId]: {
                         username: socket.username,
+                        nickname: socket.nickname,
                         socketId: socket.id,
                         score: 0,
                         qIndex: 0,
@@ -227,6 +230,7 @@ module.exports = function attachFriendlySocket(io) {
             } else {
                 room.players[socket.userId] = {
                     username: socket.username,
+                    nickname: socket.nickname,
                     socketId: socket.id,
                     score: 0,
                     qIndex: 0,
