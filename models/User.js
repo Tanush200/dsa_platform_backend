@@ -97,6 +97,10 @@ const UserSchema = new mongoose.Schema({
     type: String,
     enum: ['leader', 'member', null],
     default: null
+  },
+  lastClanCreatedAt: {
+    type: Date,
+    default: null
   }
 }, { timestamps: true });
 

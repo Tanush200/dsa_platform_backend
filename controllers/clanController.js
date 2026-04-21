@@ -64,6 +64,15 @@ exports.createClan = async (req, res) => {
             return res.status(400).json({ message: 'You are already in a clan.' });
         }
 
+        if (user.lastClanCreatedAt) {
+            const oneWeekInMs = 7 * 24 * 60 * 60 * 1000;
+            const timeSinceLastCreation = Date.now() - new Date(user.lastClanCreatedAt).getTime();
+            if (timeSinceLastCreation < oneWeekInMs) {
+                const daysRemaining = Math.ceil((oneWeekInMs - timeSinceLastCreation) / (1000 * 60 * 60 * 24));
+                return res.status(403).json({ message: `Divisional establishment restricted. Protocol requires a cooldown period. Try again in ${daysRemaining} day(s).` });
+            }
+        }
+
         const existingClan = await Clan.findOne({ $or: [{ name }, { tag: tag.toUpperCase() }] });
         if (existingClan) {
             return res.status(400).json({ message: 'Clan name or Tag already exists.' });
@@ -82,6 +91,7 @@ exports.createClan = async (req, res) => {
 
         user.clanId = clan._id;
         user.clanRole = 'leader';
+        user.lastClanCreatedAt = new Date();
         await user.save();
 
         await del(`user:session:${userId}`).catch(() => { });
