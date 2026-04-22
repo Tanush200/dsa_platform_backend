@@ -108,7 +108,10 @@ function serializePlayers(players) {
             qCount: p.questions?.length || 0,
             isConnected: p.isBot ? true : !p.isDisconnected,
             isBot: !!p.isBot,
-            rank: p.rank
+            rank: p.rank,
+            correctCount: p.correctCount || 0,
+            totalAttempted: p.totalAttempted || 0,
+            accuracy: p.totalAttempted > 0 ? Math.round((p.correctCount / p.totalAttempted) * 100) : 0
         };
     }
     return result;
@@ -265,9 +268,8 @@ async function evaluateAnswer(roomId, userId, selectedOptionIndex, io) {
         if (!duel) return;
 
         const p = duel.players[userId];
-        if (!p || p.eliminated || (p.isProcessing && selectedOptionIndex !== undefined)) return;
-
         p.isProcessing = true;
+        p.totalAttempted = (p.totalAttempted || 0) + 1;
 
         const q = p.questions && p.questions[p.qIndex];
         if (!q) {
@@ -286,6 +288,7 @@ async function evaluateAnswer(roomId, userId, selectedOptionIndex, io) {
 
         if (isCorrect) {
             p.points += q.points;
+            p.correctCount = (p.correctCount || 0) + 1;
             p.streak += 1;
             p.bestStreak = Math.max(p.bestStreak || 0, p.streak);
 
@@ -502,9 +505,9 @@ async function startSurvivalDuel(p1, p2, io, domain = 'cs') {
             globalTimerEnd,
             matchStarted: false,
             players: {
-                [p1Id]: { username: p1.username, nickname: p1.nickname, points: 0, streak: 0, bestStreak: 0, lives: 4, eliminated: false, socketId: p1.socketId, qIndex: 0, questions: questions1, rank: rank1, isDisconnected: false, isBot: false, isReady: false },
+                [p1Id]: { username: p1.username, nickname: p1.nickname, points: 0, correctCount: 0, totalAttempted: 0, streak: 0, bestStreak: 0, lives: 4, eliminated: false, socketId: p1.socketId, qIndex: 0, questions: questions1, rank: rank1, isDisconnected: false, isBot: false, isReady: false },
                 [p2Id]: {
-                    username: p2.username, nickname: p2.nickname, points: 0, streak: 0, bestStreak: 0, lives: 4, eliminated: false,
+                    username: p2.username, nickname: p2.nickname, points: 0, correctCount: 0, totalAttempted: 0, streak: 0, bestStreak: 0, lives: 4, eliminated: false,
                     socketId: p2.socketId, qIndex: 0, questions: questions2, rank: rank2,
                     isDisconnected: false, isBot: !!p2.isBot, isReady: !!p2.isBot
                 }
