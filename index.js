@@ -180,6 +180,8 @@ app.use('/api/duel', require('./routes/duel'));
 app.use('/api/survival', require('./routes/survival'));
 app.use('/api/referral', noCache, require('./routes/referral'));
 app.use('/api/clan', require('./routes/clan'));
+app.use('/api/video', require('./routes/video'));
+
 
 
 app.all('/*path', (req, res) => {
