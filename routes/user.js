@@ -158,6 +158,10 @@ router.put('/profile-meta', auth, async (req, res) => {
       { returnDocument: 'after' }
     ).select('-password -solveHistory');
 
+    if (req.user.id) {
+      await del(`user:session:${req.user.id}`).catch(() => { });
+    }
+
     res.json(user);
   } catch (err) {
     console.error('Profile meta update error:', err);
