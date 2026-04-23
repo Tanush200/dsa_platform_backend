@@ -42,8 +42,35 @@ const UserSchema = new mongoose.Schema({
   },
   nickname: {
     type: String,
-    default: "",
+    default: null,
+    sparse: true,
+    unique: true,
     index: true
+  },
+  bio: {
+    type: String,
+    default: "",
+    maxlength: 200
+  },
+  githubHandle: {
+    type: String,
+    default: ""
+  },
+  linkedinHandle: {
+    type: String,
+    default: ""
+  },
+  portfolioUrl: {
+    type: String,
+    default: ""
+  },
+  languages: {
+    type: [String],
+    default: []
+  },
+  skills: {
+    type: [String],
+    default: []
   },
   role: {
     type: String,
