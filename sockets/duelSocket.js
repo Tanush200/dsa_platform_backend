@@ -60,19 +60,9 @@ async function getRandomProblem(mode) {
     return await DuelProblem.findById(randomId).lean();
 }
 
-// async function getRandomProblem(mode) {
-//     // const problems = await DuelProblem.find({
-//     //     active: true,
-//     //     supportedModes: mode
-//     // });
 
-//     const problems = await DuelProblem.aggregate([
-//         { $match: { active: true, supportedModes: mode } },
-//         { $sample: { size: 1 } }
-//     ])
-//     if (!problems.length) throw new Error('No problems available for this mode');
-//     return problems[0];
-// }
+
+
 
 module.exports = function attachDuelSocket(io) {
 
