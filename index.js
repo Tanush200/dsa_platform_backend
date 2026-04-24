@@ -71,7 +71,7 @@ app.use(pinoHttp({
       query: req.query,
       remoteAddress: req.remoteAddress,
       headers: Object.fromEntries(
-        Object.entries(req.headers).filter(([key]) => 
+        Object.entries(req.headers).filter(([key]) =>
           !['authorization', 'cookie', 'x-forwarded-for', 'x-real-ip', 'connection', 'accept-encoding', 'upgrade-insecure-requests'].includes(key)
         )
       )
@@ -81,9 +81,9 @@ app.use(pinoHttp({
       return {
         statusCode: res.statusCode,
         headers: Object.fromEntries(
-          Object.entries(headers).filter(([key]) => 
-            !['strict-transport-security', 'x-content-type-options', 'x-dns-prefetch-control', 
-              'x-download-options', 'x-frame-options', 'x-permitted-cross-domain-policies', 
+          Object.entries(headers).filter(([key]) =>
+            !['strict-transport-security', 'x-content-type-options', 'x-dns-prefetch-control',
+              'x-download-options', 'x-frame-options', 'x-permitted-cross-domain-policies',
               'x-xss-protection', 'vary', 'access-control-allow-credentials', 'etag', 'x-ratelimit-limit', 'x-ratelimit-remaining', 'x-ratelimit-reset'].includes(key)
           )
         )
@@ -195,7 +195,7 @@ app.all('/*path', (req, res) => {
   });
 });
 
-// Error handling middleware
+
 app.use(errorHandler);
 
 
@@ -216,7 +216,7 @@ try {
   logger.error(err, "CRITICAL: Failed to initialize Redis adapter. Survival mode will be disabled.");
 }
 
-//  Socket Handlers
+
 const attachDuelSocket = require('./sockets/duelSocket');
 attachDuelSocket(io);
 
