@@ -133,7 +133,16 @@ async function triggerMatchStart(roomId, io) {
 }
 
 async function handleGlobalTimeOut(roomId, io) {
-    if (!await acquireLock(roomId)) return;
+    let lockAcquired = false;
+    for (let i = 0; i < 5; i++) {
+        if (await acquireLock(roomId)) {
+            lockAcquired = true;
+            break;
+        }
+        await new Promise(r => setTimeout(r, 100));
+    }
+
+    if (!lockAcquired) return;
 
     try {
         const duel = await getJson(REDIS_DUEL_PREFIX + roomId);
@@ -266,6 +275,11 @@ async function evaluateAnswer(roomId, userId, selectedOptionIndex, io) {
     try {
         let duel = await getJson(REDIS_DUEL_PREFIX + roomId);
         if (!duel) return;
+
+        if (duel.globalTimerEnd && Date.now() >= duel.globalTimerEnd) {
+            await handleGlobalTimeOut(roomId, io);
+            return;
+        }
 
         const p = duel.players[userId];
         if (!p || p.eliminated) return;
