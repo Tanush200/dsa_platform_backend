@@ -12,7 +12,7 @@ const { del } = require('../services/redis');
 router.get('/me', auth, async (req, res) => {
   try {
     const user = await User.findById(req.user.id)
-      .select('-password -solveHistory')
+      .select('-password -solveHistory -verificationToken -resetPasswordToken -resetPasswordExpires')
       .populate('clanId', 'slug name tag');
     res.json(user);
   } catch (err) {
@@ -92,7 +92,7 @@ router.put('/nickname', auth, async (req, res) => {
       { returnDocument: 'after' }
     ).select('-password');
     if (user) {
-      await del(`user:session:${req.user.uid}`).catch(() => { });
+      await del(`user:session:${req.user.id}`).catch(() => { });
     }
 
     res.json(user);
@@ -123,7 +123,7 @@ router.put('/email', auth, async (req, res) => {
     ).select('-password');
 
     if (user) {
-      await del(`user:session:${req.user.uid}`).catch(() => { });
+      await del(`user:session:${req.user.id}`).catch(() => { });
     }
 
     res.json({
@@ -185,8 +185,8 @@ router.delete('/me', auth, async (req, res) => {
       User.findByIdAndDelete(userId)
     ]);
 
-    if (req.user.uid) {
-      await del(`user:session:${req.user.uid}`).catch(() => { });
+    if (req.user.id) {
+      await del(`user:session:${req.user.id}`).catch(() => { });
     }
 
     res.json({ message: 'Identity purged from the Arena. Your data has been erased.' });
@@ -202,7 +202,7 @@ router.get('/profile/:nickname', async (req, res) => {
     const { nickname } = req.params;
     const user = await User.findOne({
       nickname: { $regex: new RegExp(`^${nickname}$`, 'i') }
-    }).select('nickname username bio githubHandle linkedinHandle portfolioUrl languages skills solveHistory currentStreak maxStreak lastSolvedDate');
+    }).select('nickname bio githubHandle linkedinHandle portfolioUrl languages skills solveHistory currentStreak maxStreak lastSolvedDate');
 
     if (!user) {
       return res.status(404).json({ message: 'Profile not found. This operator does not exist in the Arena.' });

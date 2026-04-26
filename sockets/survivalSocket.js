@@ -282,7 +282,7 @@ async function evaluateAnswer(roomId, userId, selectedOptionIndex, io) {
         }
 
         const p = duel.players[userId];
-        if (!p || p.eliminated) return;
+        if (!p || p.eliminated || p.isProcessing) return;
         
         p.isProcessing = true;
         p.totalAttempted = (p.totalAttempted || 0) + 1;

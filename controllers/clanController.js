@@ -114,8 +114,8 @@ exports.getClanDetails = async (req, res) => {
         }
 
         const clan = await Clan.findOne(query)
-            .populate('leader', 'username nickname')
-            .populate('members', 'username nickname role lastSolvedDate');
+            .populate('leader', 'nickname')
+            .populate('members', 'nickname role lastSolvedDate');
 
         if (!clan) {
             return res.status(404).json({ message: 'Tactical division not found.' });
@@ -489,7 +489,7 @@ exports.getClanMessages = async (req, res) => {
         const messages = await ClanMessage.find({ clanId: id })
             .sort({ timestamp: -1 })
             .limit(50)
-            .populate('senderId', 'username nickname')
+            .populate('senderId', 'nickname')
             .lean();
 
         res.status(200).json({ status: 'success', data: messages.reverse() });
@@ -657,7 +657,7 @@ exports.getJoinRequests = async (req, res) => {
             clanId: clan._id,
             status: 'pending'
         })
-            .populate('userId', 'username nickname')
+            .populate('userId', 'nickname')
             .sort({ timestamp: -1 });
 
         res.status(200).json({ status: 'success', data: requests });
@@ -750,8 +750,8 @@ exports.getClanLogs = async (req, res) => {
         const logs = await ClanLog.find({ clanId: clan._id })
             .sort({ createdAt: -1 })
             .limit(50)
-            .populate('operatorId', 'username nickname')
-            .populate('targetId', 'username nickname');
+            .populate('operatorId', 'nickname')
+            .populate('targetId', 'nickname');
 
         res.status(200).json({ status: 'success', data: logs });
     } catch (err) {
