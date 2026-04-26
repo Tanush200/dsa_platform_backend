@@ -109,7 +109,7 @@ router.get('/leaderboard', [auth, setCache(300)], async (req, res) => {
                 .sort({ survivalElo: -1 })
                 .skip(skip)
                 .limit(limit)
-                .populate('user', 'nickname username')
+                .populate('user', 'nickname')
                 .lean();
         } else {
             const queryPath = `domainStats.${domain}.totalDuels`;
@@ -121,7 +121,7 @@ router.get('/leaderboard', [auth, setCache(300)], async (req, res) => {
                 .skip(skip)
                 .limit(limit)
                 .select('user survivalElo survivalRank survivalWins survivalLosses survivalTotalDuels domainStats')
-                .populate('user', 'nickname username')
+                .populate('user', 'nickname')
                 .lean();
         }
 
