@@ -120,15 +120,31 @@ function serializePlayers(players) {
 
 
 async function triggerMatchStart(roomId, io) {
-    const duel = await getJson(REDIS_DUEL_PREFIX + roomId);
-    if (!duel || duel.matchStarted) return;
+    let lockAcquired = false;
+    for (let i = 0; i < 5; i++) {
+        if (await acquireLock(roomId)) {
+            lockAcquired = true;
+            break;
+        }
+        await new Promise(r => setTimeout(r, 100));
+    }
+    if (!lockAcquired) return;
 
-    duel.matchStarted = true;
-    await setJson(REDIS_DUEL_PREFIX + roomId, duel);
+    try {
+        const duel = await getJson(REDIS_DUEL_PREFIX + roomId);
+        if (!duel || duel.matchStarted) return;
 
-    const pIds = Object.keys(duel.players);
-    for (const uid of pIds) {
-        await nextQuestion(roomId, uid, io);
+        duel.matchStarted = true;
+        await setJson(REDIS_DUEL_PREFIX + roomId, duel);
+
+        const pIds = Object.keys(duel.players);
+        for (const uid of pIds) {
+            await nextQuestion(roomId, uid, io);
+        }
+    } catch (err) {
+        console.error("Match Start error:", err);
+    } finally {
+        await releaseLock(roomId);
     }
 }
 
@@ -173,49 +189,64 @@ async function handleGlobalTimeOut(roomId, io) {
 }
 
 async function nextQuestion(roomId, userId, io) {
-    const duel = await getJson(REDIS_DUEL_PREFIX + roomId);
-    if (!duel) return;
+    let lockAcquired = false;
+    for (let i = 0; i < 5; i++) {
+        if (await acquireLock(roomId)) {
+            lockAcquired = true;
+            break;
+        }
+        await new Promise(r => setTimeout(r, 100));
+    }
 
-    const p = duel.players[String(userId)];
-    if (!p || p.eliminated) return;
+    try {
+        const duel = await getJson(REDIS_DUEL_PREFIX + roomId);
+        if (!duel) return;
 
-    const q = p.questions && p.questions[p.qIndex];
-    if (!q) {
-        p.eliminated = true;
+        const p = duel.players[String(userId)];
+        if (!p || p.eliminated) return;
+
+        p.isProcessing = false;
+
+        const q = p.questions && p.questions[p.qIndex];
+        if (!q) {
+            p.eliminated = true;
+            duel.players[String(userId)] = p;
+            await setJson(REDIS_DUEL_PREFIX + roomId, duel);
+            await checkWinConditions(roomId, io, duel);
+            return;
+        }
+
         duel.players[String(userId)] = p;
         await setJson(REDIS_DUEL_PREFIX + roomId, duel);
-        await checkWinConditions(roomId, io);
-        return;
-    }
 
-    p.isProcessing = false;
-    duel.players[String(userId)] = p;
-    await setJson(REDIS_DUEL_PREFIX + roomId, duel);
-
-    io.to(roomId).emit('survival:stateUpdate', {
-        players: serializePlayers(duel.players),
-        globalTimerEnd: duel.globalTimerEnd
-    });
-
-    if (!p.isBot && p.socketId) {
-        io.to(p.socketId).emit('survival:question', {
-            index: p.qIndex,
-            questionText: q.questionText,
-            codeSnippet: q.codeSnippet,
-            options: q.options,
-            type: q.type,
-            difficulty: q.difficulty,
-            points: q.points,
-            domain: q.domain || 'cs',
-            timeLimit: TIME_PER_QUESTION
+        io.to(roomId).emit('survival:stateUpdate', {
+            players: serializePlayers(duel.players),
+            globalTimerEnd: duel.globalTimerEnd
         });
-    }
 
-    await addQuestionTimer(roomId, userId, p.qIndex, TIME_PER_QUESTION);
+        if (!p.isBot && p.socketId) {
+            io.to(p.socketId).emit('survival:question', {
+                index: p.qIndex,
+                questionText: q.questionText,
+                codeSnippet: q.codeSnippet,
+                options: q.options,
+                type: q.type,
+                difficulty: q.difficulty,
+                points: q.points,
+                domain: q.domain || 'cs',
+                timeLimit: TIME_PER_QUESTION
+            });
+        }
 
+        await addQuestionTimer(roomId, userId, p.qIndex, TIME_PER_QUESTION);
 
-    if (p.isBot) {
-        await runBotTurn(roomId, userId, io);
+        if (p.isBot) {
+            await runBotTurn(roomId, userId, io);
+        }
+    } catch (err) {
+        console.error("Next Question error:", err);
+    } finally {
+        if (lockAcquired) await releaseLock(roomId);
     }
 }
 
@@ -283,7 +314,7 @@ async function evaluateAnswer(roomId, userId, selectedOptionIndex, io) {
 
         const p = duel.players[userId];
         if (!p || p.eliminated || p.isProcessing) return;
-        
+
         p.isProcessing = true;
         p.totalAttempted = (p.totalAttempted || 0) + 1;
 
@@ -353,49 +384,69 @@ async function evaluateAnswer(roomId, userId, selectedOptionIndex, io) {
 }
 
 async function checkWinConditions(roomId, io, existingDuel = null) {
-    const duel = existingDuel || (await getJson(REDIS_DUEL_PREFIX + roomId));
-    if (!duel) return;
+    let lockAcquired = false;
+    let duel = existingDuel;
 
-    const playerIds = Object.keys(duel.players);
-    const p1Id = playerIds[0];
-    const p2Id = playerIds[1];
-    const p1 = duel.players[p1Id];
-    const p2 = duel.players[p2Id];
-
-    io.to(roomId).emit('survival:stateUpdate', {
-        players: serializePlayers(duel.players),
-        globalTimerEnd: duel.globalTimerEnd
-    });
-
-    // Case 1: Both strictly finished or eliminated
-    if (p1.eliminated && p2.eliminated) {
-        let winner = null;
-        if (p1.points > p2.points) winner = p1Id;
-        else if (p2.points > p1.points) winner = p2Id;
-        else if (p1.qIndex > p2.qIndex) winner = p1Id;
-        else if (p2.qIndex > p1.qIndex) winner = p2Id;
-        else if (p1.bestStreak > p2.bestStreak) winner = p1Id;
-        else if (p2.bestStreak > p1.bestStreak) winner = p2Id;
-
-        await endDuel(roomId, winner, io, duel);
-        return;
-    }
-
-    // Case 2: Mathematical Victory or Early Closure
-    if (p1.eliminated && !p2.eliminated) {
-        const remainingQ = (p2.questions?.length || 0) - p2.qIndex;
-        const maxPossiblePoints = p2.points + (remainingQ * 10);
-
-        if (p2.points > p1.points || maxPossiblePoints < p1.points) {
-            await endDuel(roomId, p2.points > p1.points ? p2Id : p1Id, io, duel);
+    try {
+        if (!duel) {
+            for (let i = 0; i < 5; i++) {
+                if (await acquireLock(roomId)) {
+                    lockAcquired = true;
+                    break;
+                }
+                await new Promise(r => setTimeout(r, 100));
+            }
+            if (!lockAcquired) return;
+            duel = await getJson(REDIS_DUEL_PREFIX + roomId);
         }
-    } else if (p2.eliminated && !p1.eliminated) {
-        const remainingQ = (p1.questions?.length || 0) - p1.qIndex;
-        const maxPossiblePoints = p1.points + (remainingQ * 10);
 
-        if (p1.points > p2.points || maxPossiblePoints < p2.points) {
-            await endDuel(roomId, p1.points > p2.points ? p1Id : p2Id, io, duel);
+        if (!duel) return;
+
+        const playerIds = Object.keys(duel.players);
+        const p1Id = playerIds[0];
+        const p2Id = playerIds[1];
+        const p1 = duel.players[p1Id];
+        const p2 = duel.players[p2Id];
+
+        io.to(roomId).emit('survival:stateUpdate', {
+            players: serializePlayers(duel.players),
+            globalTimerEnd: duel.globalTimerEnd
+        });
+
+        // Case 1: Both strictly finished or eliminated
+        if (p1.eliminated && p2.eliminated) {
+            let winner = null;
+            if (p1.points > p2.points) winner = p1Id;
+            else if (p2.points > p1.points) winner = p2Id;
+            else if (p1.qIndex > p2.qIndex) winner = p1Id;
+            else if (p2.qIndex > p1.qIndex) winner = p2Id;
+            else if (p1.bestStreak > p2.bestStreak) winner = p1Id;
+            else if (p2.bestStreak > p1.bestStreak) winner = p2Id;
+
+            await endDuel(roomId, winner, io, duel);
+            return;
         }
+
+        // Case 2: Mathematical Victory or Early Closure
+        if (p1.eliminated && !p2.eliminated) {
+            const remainingQ = (p2.questions?.length || 0) - p2.qIndex;
+            const maxPossiblePoints = p2.points + (remainingQ * 10);
+
+            if (p2.points > p1.points || maxPossiblePoints < p1.points) {
+                await endDuel(roomId, p2.points > p1.points ? p2Id : p1Id, io, duel);
+            }
+        } else if (p2.eliminated && !p1.eliminated) {
+            const remainingQ = (p1.questions?.length || 0) - p1.qIndex;
+            const maxPossiblePoints = p1.points + (remainingQ * 10);
+
+            if (p1.points > p2.points || maxPossiblePoints < p2.points) {
+                await endDuel(roomId, p1.points > p2.points ? p1Id : p2Id, io, duel);
+            }
+        }
+    } catch (err) {
+        console.error("Win condition check error:", err);
+    } finally {
+        if (lockAcquired) await releaseLock(roomId);
     }
 }
 
