@@ -180,6 +180,7 @@ app.use('/api/duel', require('./routes/duel'));
 app.use('/api/survival', require('./routes/survival'));
 app.use('/api/referral', noCache, require('./routes/referral'));
 app.use('/api/clan', require('./routes/clan'));
+app.use('/api/quests', require('./routes/questRoutes'));
 app.use('/api/video', require('./routes/video'));
 
 
@@ -232,6 +233,7 @@ attachClanSocket(io);
 require('./workers/survivalWorker');
 require('./workers/friendlyWorker');
 require('./workers/clanResetWorker');
+require('./workers/questWorker');
 
 
 mongoose.connect(process.env.MONGODB_URI, {
