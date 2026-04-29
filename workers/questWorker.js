@@ -11,7 +11,7 @@ const connection = new Redis(process.env.REDIS_URL || 'redis://localhost:6379', 
 });
 
 async function processEndedQuests() {
-    console.log('[Quest Worker] Checking for ended quests to calculate leaderboards...');
+    // console.log('[Quest Worker] Checking for ended quests to calculate leaderboards...');
     try {
         const thirtyMinutesAgo = new Date(Date.now() - 30 * 60 * 1000);
 
