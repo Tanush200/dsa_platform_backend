@@ -68,29 +68,24 @@ app.use(pinoHttp({
       id: req.id,
       method: req.method,
       url: req.url,
-      query: req.query,
-      remoteAddress: req.remoteAddress,
-      headers: Object.fromEntries(
-        Object.entries(req.headers).filter(([key]) =>
-          !['authorization', 'cookie', 'x-forwarded-for', 'x-real-ip', 'connection', 'accept-encoding', 'upgrade-insecure-requests'].includes(key)
-        )
-      )
+      headers: {
+        host: req.headers.host,
+        'user-agent': req.headers['user-agent'],
+        referer: req.headers.referer,
+        origin: req.headers.origin
+      }
     }),
-    res: (res) => {
-      const headers = (typeof res.getHeaders === 'function') ? res.getHeaders() : (res.headers || res._headers || {});
-      return {
-        statusCode: res.statusCode,
-        headers: Object.fromEntries(
-          Object.entries(headers).filter(([key]) =>
-            !['strict-transport-security', 'x-content-type-options', 'x-dns-prefetch-control',
-              'x-download-options', 'x-frame-options', 'x-permitted-cross-domain-policies',
-              'x-xss-protection', 'vary', 'access-control-allow-credentials', 'etag', 'x-ratelimit-limit', 'x-ratelimit-remaining', 'x-ratelimit-reset'].includes(key)
-          )
-        )
-      };
-    }
-
+    res: (res) => ({
+      statusCode: res.statusCode,
+      headers: {
+        'content-type': res.getHeader('content-type'),
+        'content-length': res.getHeader('content-length')
+      }
+    })
   },
+  customSuccessMessage: (req, res) => `GRID_SYNC: ${req.method} ${req.url} - ${res.statusCode}`,
+  customErrorMessage: (req, res, err) => `GRID_BREACH: ${req.method} ${req.url} - ${res.statusCode}`,
+
   redact: ['req.headers.authorization', 'req.headers.cookie', 'res.headers["set-cookie"]'],
   autoLogging: {
     ignore: (req) => botPatterns.some(p => p.test(req.path))
