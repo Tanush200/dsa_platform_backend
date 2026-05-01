@@ -75,13 +75,20 @@ app.use(pinoHttp({
         origin: req.headers.origin
       }
     }),
-    res: (res) => ({
-      statusCode: res.statusCode,
-      headers: {
-        'content-type': res.getHeader('content-type'),
-        'content-length': res.getHeader('content-length')
+    res: (res) => {
+      if (!res) return res;
+      const headers = {};
+      if (typeof res.getHeader === 'function') {
+        const contentType = res.getHeader('content-type');
+        const contentLength = res.getHeader('content-length');
+        if (contentType) headers['content-type'] = contentType;
+        if (contentLength) headers['content-length'] = contentLength;
       }
-    })
+      return {
+        statusCode: res.statusCode,
+        headers
+      };
+    }
   },
   customSuccessMessage: (req, res) => `GRID_SYNC: ${req.method} ${req.url} - ${res.statusCode}`,
   customErrorMessage: (req, res, err) => `GRID_BREACH: ${req.method} ${req.url} - ${res.statusCode}`,
