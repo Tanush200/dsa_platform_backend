@@ -2,6 +2,7 @@ const ClanMessage = require('../models/ClanMessage');
 const User = require('../models/User');
 const jwt = require('jsonwebtoken');
 const mongoose = require('mongoose');
+const logger = require('../utils/logger');
 
 module.exports = (io) => {
 
@@ -32,7 +33,7 @@ module.exports = (io) => {
             try {
                 const user = await User.findById(socket.userId).select('clanId');
                 if (!user || !user.clanId || user.clanId.toString() !== clanId) {
-                    console.warn(`[Comms Intrusion Alert] User ${socket.userId} attempted to listen in on Clan ${clanId}`);
+                    logger.warn({ userId: socket.userId, clanId }, "[Comms Intrusion Alert] Unauthorized clan access attempt");
                     return socket.emit('clan:error', { message: 'Unauthorized sector access. Comms isolation active.' });
                 }
 
@@ -50,7 +51,7 @@ module.exports = (io) => {
                 const user = await User.findById(userId).select('username nickname clanId');
 
                 if (!user.clanId || user.clanId.toString() !== clanId.toString()) {
-                    console.error(`[Comms Breach Attempt] User ${userId} attempted transmission to unauthorized sector ${clanId}`);
+                    logger.error({ userId, clanId }, "[Comms Breach Attempt] Unauthorized transmission attempt");
                     return socket.emit('clan:error', { message: 'Unauthorized sector. Transmission rejected.' });
                 }
 
@@ -84,7 +85,7 @@ module.exports = (io) => {
                 io.to(`clan:${clanId}`).emit('clan:messageReceived', messagePayload);
 
             } catch (err) {
-                console.error('[Clan Socket] Transmission failure:', err);
+                logger.error(err, '[Clan Socket] Transmission failure');
                 socket.emit('clan:error', { message: 'Strategic transmission failed.' });
             }
         });
