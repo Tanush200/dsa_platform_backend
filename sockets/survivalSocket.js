@@ -656,7 +656,7 @@ async function startSurvivalDuel(p1, p2, io, domain = 'cs') {
 
         await setJson(REDIS_DUEL_PREFIX + roomId, matchData);
 
-        io.to(roomId).emit('survival:matched', {
+        io.to(p1Id).to(p2Id).to(roomId).emit('survival:matched', {
             roomId,
             duelId: duelModel._id.toString(),
             players: serializePlayers(matchData.players),
