@@ -682,7 +682,18 @@ module.exports = function attachSurvivalSocket(io) {
             const queueData = await redis.lrange(queueKey, 0, 50);
             if (queueData.length === 0) continue;
 
-            let parsedQueue = queueData.map(item => JSON.parse(item));
+            let parsedQueue = [];
+            let seenInQueue = new Set();
+            for (let i = 0; i < queueData.length; i++) {
+                const item = JSON.parse(queueData[i]);
+                if (!seenInQueue.has(item.userId)) {
+                    seenInQueue.add(item.userId);
+                    parsedQueue.push(item);
+                } else {
+                    await redis.lrem(queueKey, 1, queueData[i]);
+                }
+            }
+
             let matchedUserIds = new Set();
 
             for (let i = 0; i < parsedQueue.length - 1; i++) {
@@ -697,6 +708,8 @@ module.exports = function attachSurvivalSocket(io) {
                     if (matchedUserIds.has(parsedQueue[j].userId)) continue;
 
                     const p2 = parsedQueue[j];
+                    if (p1.userId === p2.userId) continue;
+                    
                     if (Math.abs(p1.elo - p2.elo) <= allowedGap) {
                         matchedUserIds.add(p1.userId);
                         matchedUserIds.add(p2.userId);
