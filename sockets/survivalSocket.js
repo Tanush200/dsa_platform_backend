@@ -79,9 +79,32 @@ async function getQuestionsForRank(rank, count = 50, excludeIds = [], domain = '
 }
 
 const BOT_NAMES = [
+    // Norse Warriors
     'Erik_The_Red', 'Bjorn_Ironside', 'Ivar_Boneless', 'Sigurd_SnakeEye',
     'Lagertha_Code', 'Astrid_Shield', 'Floki_Builder', 'Harald_Finehair',
-    'Rollo_Duke', 'Ubbe_Ragnarsson', 'Gunnhild_Warrior', 'Torvi_Hunter'
+    'Rollo_Duke', 'Ubbe_Ragnarsson', 'Gunnhild_Warrior', 'Torvi_Hunter',
+    'Ragnar_Lothbrok', 'Freydis_Blade', 'Halfdan_Black', 'Egil_Skallagrim',
+    'Leif_Erikson', 'Sigrid_Storrada', 'Olaf_Haraldsson', 'Sweyn_Forkbeard',
+
+    // Greek & Roman Legends
+    'Achilles_Prime', 'Leonidas_X', 'Odysseus_Net', 'Ajax_Core',
+    'Hector_Storm', 'Ares_Protocol', 'Athena_Grid', 'Spartan_404',
+    'Caesar_Debug', 'Marcus_Aurelius', 'Brutus_Logic', 'Hannibal_Stack',
+
+    // Sci-Fi & AI
+    'Cipher_9000', 'NeuralX_7', 'Nexus_Prime', 'Volt_Unit_3',
+    'Sigma_Bot', 'Helix_Daemon', 'Apex_Null', 'Binary_Rex',
+    'Vector_Ghost', 'Quantum_Shade', 'Zero_Byte', 'Phantom_Core',
+    'Ghost_Protocol', 'Titan_Kernel', 'Orion_Stack', 'Eclipse_Run',
+
+    // Samurai & Feudal
+    'Kenshin_Null', 'Musashi_Bit', 'Nobunaga_exe', 'Takeda_Hash',
+    'Uesugi_Loop', 'Shingen_Sync', 'Hanzo_Thread', 'Masamune_Date',
+
+    // Mythological
+    'Thor_Compile', 'Odin_Debug', 'Loki_Runtime', 'Fenrir_Crash',
+    'Anubis_Stack', 'Ra_Process', 'Horus_Query', 'Sobek_Parse',
+    'Hercules_Node', 'Perseus_Loop', 'Kratos_Exec', 'Atlas_Server',
 ];
 
 const BOT_CONFIG = {
@@ -137,6 +160,10 @@ async function triggerMatchStart(roomId, io) {
         duel.matchStarted = true;
         await setJson(REDIS_DUEL_PREFIX + roomId, duel);
 
+
+        await releaseLock(roomId);
+        lockAcquired = false;
+
         const pIds = Object.keys(duel.players);
         for (const uid of pIds) {
             await nextQuestion(roomId, uid, io);
@@ -144,7 +171,7 @@ async function triggerMatchStart(roomId, io) {
     } catch (err) {
         console.error("Match Start error:", err);
     } finally {
-        await releaseLock(roomId);
+        if (lockAcquired) await releaseLock(roomId);
     }
 }
 
@@ -196,6 +223,11 @@ async function nextQuestion(roomId, userId, io) {
             break;
         }
         await new Promise(r => setTimeout(r, 100));
+    }
+
+    if (!lockAcquired) {
+        logger.warn(`[Survival] nextQuestion: failed to acquire lock for room ${roomId}, skipping player ${userId}`);
+        return;
     }
 
     try {
@@ -308,6 +340,8 @@ async function evaluateAnswer(roomId, userId, selectedOptionIndex, io) {
         if (!duel) return;
 
         if (duel.globalTimerEnd && Date.now() >= duel.globalTimerEnd) {
+            await releaseLock(roomId);
+            lockAcquired = false;
             await handleGlobalTimeOut(roomId, io);
             return;
         }
@@ -316,7 +350,9 @@ async function evaluateAnswer(roomId, userId, selectedOptionIndex, io) {
         if (!p || p.eliminated || p.isProcessing) return;
 
         p.isProcessing = true;
-        p.totalAttempted = (p.totalAttempted || 0) + 1;
+        if (selectedOptionIndex !== undefined) {
+            p.totalAttempted = (p.totalAttempted || 0) + 1;
+        }
 
         const q = p.questions && p.questions[p.qIndex];
         if (!q) {
@@ -349,6 +385,8 @@ async function evaluateAnswer(roomId, userId, selectedOptionIndex, io) {
 
             if (opp && opp.eliminated && p.points > opp.points) {
                 await setJson(REDIS_DUEL_PREFIX + roomId, duel);
+                await releaseLock(roomId);
+                lockAcquired = false;
                 return await endDuel(roomId, userId, io, duel);
             }
 
@@ -379,7 +417,7 @@ async function evaluateAnswer(roomId, userId, selectedOptionIndex, io) {
     } catch (err) {
         console.error("Evaluate error:", err);
     } finally {
-        await releaseLock(roomId);
+        if (lockAcquired) await releaseLock(roomId);
     }
 }
 
@@ -429,15 +467,15 @@ async function checkWinConditions(roomId, io, existingDuel = null) {
 
         // Case 2: Mathematical Victory or Early Closure
         if (p1.eliminated && !p2.eliminated) {
-            const remainingQ = (p2.questions?.length || 0) - p2.qIndex;
-            const maxPossiblePoints = p2.points + (remainingQ * 10);
+            const remainingQuestions = p2.questions ? p2.questions.slice(p2.qIndex) : [];
+            const maxPossiblePoints = p2.points + remainingQuestions.reduce((sum, q) => sum + (q.points || 10), 0);
 
             if (p2.points > p1.points || maxPossiblePoints < p1.points) {
                 await endDuel(roomId, p2.points > p1.points ? p2Id : p1Id, io, duel);
             }
         } else if (p2.eliminated && !p1.eliminated) {
-            const remainingQ = (p1.questions?.length || 0) - p1.qIndex;
-            const maxPossiblePoints = p1.points + (remainingQ * 10);
+            const remainingQuestions = p1.questions ? p1.questions.slice(p1.qIndex) : [];
+            const maxPossiblePoints = p1.points + remainingQuestions.reduce((sum, q) => sum + (q.points || 10), 0);
 
             if (p1.points > p2.points || maxPossiblePoints < p2.points) {
                 await endDuel(roomId, p1.points > p2.points ? p1Id : p2Id, io, duel);
@@ -453,6 +491,11 @@ async function checkWinConditions(roomId, io, existingDuel = null) {
 async function endDuel(roomId, winnerId, io, existingDuel = null) {
     const duelData = existingDuel || (await getJson(REDIS_DUEL_PREFIX + roomId));
     if (!duelData) return;
+
+    // Guard against double-end: if already marked as ended, bail out
+    if (duelData.ended) return;
+    duelData.ended = true;
+    await setJson(REDIS_DUEL_PREFIX + roomId, duelData);
 
     io.to(roomId).emit('survival:stateUpdate', {
         players: serializePlayers(duelData.players),
@@ -497,7 +540,7 @@ async function startSurvivalDuel(p1, p2, io, domain = 'cs') {
             roomId,
             players: [
                 { user: p1.userId, points: 0, streak: 0, eliminated: false },
-                { user: p2.userId, points: 0, streak: 0, eliminated: false }
+                ...(p2.isBot ? [] : [{ user: p2.userId, points: 0, streak: 0, eliminated: false }])
             ],
             status: 'active',
             startedAt: new Date()
@@ -541,24 +584,51 @@ async function startSurvivalDuel(p1, p2, io, domain = 'cs') {
         const updateHistory = async (prof, questions) => {
             if (!prof || !questions || questions.length === 0) return;
             const newIds = questions.map(q => q._id.toString());
-            const current = (prof.survivalSeenQuestions || []).map(id => id.toString());
-            const filtered = current.filter(id => !newIds.includes(id));
-            prof.survivalSeenQuestions = [...filtered, ...newIds].slice(-800);
-            await prof.save();
-        };
 
-        await Promise.all([
-            updateHistory(prof1, questions1),
-            updateHistory(prof2, questions2)
-        ]);
+            for (let attempt = 0; attempt < 3; attempt++) {
+                try {
+                    const freshProf = attempt === 0 ? prof : await DuelProfile.findById(prof._id);
+                    if (!freshProf) return;
+                    const current = (freshProf.survivalSeenQuestions || []).map(id => id.toString());
+                    const filtered = current.filter(id => !newIds.includes(id));
+                    freshProf.survivalSeenQuestions = [...filtered, ...newIds].slice(-800);
+                    await freshProf.save();
+                    return;
+                } catch (err) {
+                    if (err.name === 'VersionError' && attempt < 2) {
+                        logger.warn(`[Survival] VersionError on updateHistory attempt ${attempt + 1}, retrying...`);
+                        continue;
+                    }
+                    throw err;
+                }
+            }
+        };
+        await updateHistory(prof1, questions1);
+        if (prof2) await updateHistory(prof2, questions2);
 
         const p1Socket = io.sockets.sockets.get(p1.socketId);
-        if (p1Socket) { p1Socket.join(roomId); p1Socket.roomId = roomId; }
+        if (!p1Socket || !p1Socket.connected) {
+            logger.warn(`[Survival] p1 socket gone at match start, aborting`);
+            await SurvivalDuel.findByIdAndDelete(duelModel._id);
+            if (!p2.isBot) {
+                const queueKey = REDIS_QUEUE_PREFIX + domain;
+                await redis.rpush(queueKey, JSON.stringify(p2));
+            }
+            return;
+        }
+        p1Socket.join(roomId); p1Socket.roomId = roomId;
 
         let p2Socket = null;
         if (!p2.isBot) {
             p2Socket = io.sockets.sockets.get(p2.socketId);
-            if (p2Socket) { p2Socket.join(roomId); p2Socket.roomId = roomId; }
+            if (!p2Socket || !p2Socket.connected) {
+                logger.warn(`[Survival] p2 socket gone at match start, aborting`);
+                await SurvivalDuel.findByIdAndDelete(duelModel._id);
+                const queueKey = REDIS_QUEUE_PREFIX + domain;
+                await redis.rpush(queueKey, JSON.stringify(p1));
+                return;
+            }
+            p2Socket.join(roomId); p2Socket.roomId = roomId;
         }
 
         const globalTimerEnd = Date.now() + DUEL_MAX_TIME + 3000;
@@ -574,7 +644,7 @@ async function startSurvivalDuel(p1, p2, io, domain = 'cs') {
             players: {
                 [p1Id]: { username: p1.username, nickname: p1.nickname, points: 0, correctCount: 0, totalAttempted: 0, streak: 0, bestStreak: 0, lives: 4, eliminated: false, socketId: p1.socketId, qIndex: 0, questions: questions1, rank: rank1, isDisconnected: false, isBot: false, isReady: false },
                 [p2Id]: {
-                    username: p2.username, nickname: p2.nickname, points: 0, correctCount: 0, totalAttempted: 0, streak: 0, bestStreak: 0, lives: 4, eliminated: false,
+                    username: p2.username, nickname: p2.isBot ? p2.username : p2.nickname, points: 0, correctCount: 0, totalAttempted: 0, streak: 0, bestStreak: 0, lives: 4, eliminated: false,
                     socketId: p2.socketId, qIndex: 0, questions: questions2, rank: rank2,
                     isDisconnected: false, isBot: !!p2.isBot, isReady: !!p2.isBot
                 }
@@ -603,6 +673,7 @@ module.exports = function attachSurvivalSocket(io) {
     const DOMAINS = ['cs', 'aptitude', 'gk', 'ece', 'me', 'ce', 'upsc'];
 
     setInterval(async () => {
+        try {
         for (const domain of DOMAINS) {
             const queueKey = REDIS_QUEUE_PREFIX + domain;
             const queueData = await redis.lrange(queueKey, 0, 50);
@@ -632,8 +703,15 @@ module.exports = function attachSurvivalSocket(io) {
                             .lrem(queueKey, 0, queueData[j])
                             .exec();
 
-                        await startSurvivalDuel(p1, p2, io, domain);
-                        logger.debug(`[Survival] Human Match: ${p1.username} vs ${p2.username} in ${domain}`);
+                        try {
+                            await startSurvivalDuel(p1, p2, io, domain);
+                            logger.debug(`[Survival] Human Match: ${p1.username} vs ${p2.username} in ${domain}`);
+                        } catch (matchErr) {
+                            // Re-insert both players so they are not silently lost
+                            logger.error(matchErr, `[Survival] startSurvivalDuel crashed, re-queuing ${p1.username} and ${p2.username}`);
+                            await redis.rpush(queueKey, queueData[i]);
+                            await redis.rpush(queueKey, queueData[j]);
+                        }
                         break;
                     }
                 }
@@ -647,15 +725,23 @@ module.exports = function attachSurvivalSocket(io) {
                     const removedCount = await redis.lrem(queueKey, 1, headStr);
                     if (removedCount > 0) {
                         const botName = BOT_NAMES[Math.floor(Math.random() * BOT_NAMES.length)];
-                        await startSurvivalDuel(head, {
-                            userId: new mongoose.Types.ObjectId(),
-                            username: botName,
-                            isBot: true
-                        }, io, domain);
-                        logger.debug(`[Survival] Bot Match for ${head.username} in ${domain}`);
+                        try {
+                            await startSurvivalDuel(head, {
+                                userId: new mongoose.Types.ObjectId(),
+                                username: botName,
+                                isBot: true
+                            }, io, domain);
+                            logger.debug(`[Survival] Bot Match for ${head.username} in ${domain}`);
+                        } catch (botErr) {
+                            logger.error(botErr, `[Survival] Bot match failed for ${head.username}, re-queuing`);
+                            await redis.lpush(queueKey, headStr);
+                        }
                     }
                 }
             }
+        }
+        } catch (loopErr) {
+            logger.error(loopErr, '[Survival] Matchmaking loop error');
         }
     }, 1000);
 
@@ -691,6 +777,7 @@ module.exports = function attachSurvivalSocket(io) {
     io.on('connection', (socket) => {
         if (!socket.userId) return;
         socket.join(socket.userId);
+        socket.readySent = new Set();
 
         socket.on('survival:joinQueue', async (data) => {
             const domain = data?.domain || 'cs';
@@ -703,6 +790,15 @@ module.exports = function attachSurvivalSocket(io) {
                 const currentLen = await redis.llen(queueKey);
                 socket.emit('survival:queued', { position: currentLen });
                 return;
+            }
+
+            const activeDuelKeys = await redis.keys(`survival:duel:*`);
+            for (const key of activeDuelKeys) {
+                const duel = await getJson(key);
+                if (duel && duel.players && duel.players[socket.userId]) {
+                    socket.emit('survival:error', { message: 'You already have an active duel.' });
+                    return;
+                }
             }
 
             try {
@@ -751,9 +847,9 @@ module.exports = function attachSurvivalSocket(io) {
             const p = duel.players[uid];
             if (!p || p.isBot) return;
 
+            // Restore connection state and socket reference
             p.isDisconnected = false;
             p.socketId = socket.id;
-            p.isReady = true;
             socket.roomId = roomId;
 
             duel.players[uid] = p;
@@ -761,18 +857,11 @@ module.exports = function attachSurvivalSocket(io) {
 
             socket.join(roomId);
 
-
-            const allPlayers = Object.values(duel.players);
-            const allReady = allPlayers.every(pl => pl.isBot || pl.isReady);
-
-            if (allReady && !duel.matchStarted) {
-                await triggerMatchStart(roomId, io);
-                return;
-            }
-
+            // Broadcast updated state to room
             io.to(roomId).emit('survival:stateUpdate', { players: serializePlayers(duel.players), globalTimerEnd: duel.globalTimerEnd });
 
-            if (!p.eliminated) {
+            // If match is ongoing and player is not eliminated, resend their current question
+            if (duel.matchStarted && !p.eliminated) {
                 const q = p.questions && p.questions[p.qIndex];
                 if (q) {
                     io.to(socket.id).emit('survival:question', {
@@ -784,7 +873,29 @@ module.exports = function attachSurvivalSocket(io) {
             }
         });
 
+        socket.on('survival:ready', async ({ roomId }) => {
+            if (socket.readySent.has(roomId)) return;
+            socket.readySent.add(roomId);
+
+            const duel = await getJson(REDIS_DUEL_PREFIX + roomId);
+            if (!duel) return;
+            const uid = String(socket.userId);
+            const p = duel.players[uid];
+            if (!p || p.isBot) return;
+
+            p.isReady = true;
+            duel.players[uid] = p;
+            await setJson(REDIS_DUEL_PREFIX + roomId, duel);
+
+            const allReady = Object.values(duel.players).every(pl => pl.isBot || pl.isReady);
+            if (allReady && !duel.matchStarted) {
+                await triggerMatchStart(roomId, io);
+            }
+        });
+
         socket.on('survival:answer', async ({ roomId, selectedOptionIndex }) => {
+            if (!roomId || typeof selectedOptionIndex !== 'number') return;
+            if (selectedOptionIndex < 0 || selectedOptionIndex > 3) return;
             await evaluateAnswer(roomId, socket.userId, selectedOptionIndex, io);
         });
 
