@@ -525,13 +525,15 @@ exports.getClanIntel = async (req, res) => {
 
         const DuelProfile = require('../models/DuelProfile');
         const User = require('../models/User');
-        const profiles = await DuelProfile.find({ user: { $in: clan.members } });
+        const [profiles, higherClans] = await Promise.all([
+            DuelProfile.find({ user: { $in: clan.members } }),
+            Clan.countDocuments({ weeklyPoints: { $gt: clan.weeklyPoints } })
+        ]);
 
         const totalElo = profiles.reduce((sum, p) => sum + (p.survivalElo || 1000), 0);
         const totalSolved = profiles.reduce((sum, p) => sum + (p.totalSolved || 0), 0);
         const avgElo = Math.round(totalElo / Math.max(clan.members.length, 1));
 
-        const higherClans = await Clan.countDocuments({ weeklyPoints: { $gt: clan.weeklyPoints } });
         const globalRank = higherClans + 1;
 
         const topCombatants = profiles
