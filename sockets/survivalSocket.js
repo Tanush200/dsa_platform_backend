@@ -34,6 +34,9 @@ const RANK_DIFFICULTY = {
 
 
 
+
+
+
 async function getQuestionsForRank(rank, count = 50, excludeIds = [], domain = 'cs') {
     const difficulties = RANK_DIFFICULTY[rank] || ['Easy'];
 
@@ -144,7 +147,7 @@ function serializePlayers(players) {
 
 async function triggerMatchStart(roomId, io) {
     let lockAcquired = false;
-    for (let i = 0; i < 5; i++) {
+    for (let i = 0; i < 30; i++) {
         if (await acquireLock(roomId)) {
             lockAcquired = true;
             break;
@@ -177,7 +180,7 @@ async function triggerMatchStart(roomId, io) {
 
 async function handleGlobalTimeOut(roomId, io) {
     let lockAcquired = false;
-    for (let i = 0; i < 5; i++) {
+    for (let i = 0; i < 30; i++) {
         if (await acquireLock(roomId)) {
             lockAcquired = true;
             break;
@@ -217,7 +220,7 @@ async function handleGlobalTimeOut(roomId, io) {
 
 async function nextQuestion(roomId, userId, io) {
     let lockAcquired = false;
-    for (let i = 0; i < 5; i++) {
+    for (let i = 0; i < 30; i++) {
         if (await acquireLock(roomId)) {
             lockAcquired = true;
             break;
@@ -325,7 +328,7 @@ async function releaseLock(roomId) {
 
 async function evaluateAnswer(roomId, userId, selectedOptionIndex, io) {
     let lockAcquired = false;
-    for (let i = 0; i < 5; i++) {
+    for (let i = 0; i < 30; i++) {
         if (await acquireLock(roomId)) {
             lockAcquired = true;
             break;
@@ -427,7 +430,7 @@ async function checkWinConditions(roomId, io, existingDuel = null) {
 
     try {
         if (!duel) {
-            for (let i = 0; i < 5; i++) {
+            for (let i = 0; i < 30; i++) {
                 if (await acquireLock(roomId)) {
                     lockAcquired = true;
                     break;
